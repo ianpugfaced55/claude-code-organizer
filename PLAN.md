@@ -18,20 +18,52 @@ A lightweight web dashboard + MCP server that:
 3. Lets users drag-and-drop items between scopes
 4. Syncs changes to git for versioning
 
-## Competitive Landscape
+## Competitive Landscape (researched 2026-03-18)
 
-| Existing Tool | What It Does | Gap We Fill |
-|---|---|---|
-| [Claude Deck](https://claudedeck.org/) | Full dashboard (React+FastAPI+SQLite) — config editor, usage analytics, history | No drag-and-drop scope management, no git versioning, heavy stack |
-| [claude-code-backup](https://github.com/Ranteck/claude-code-backup) | Backup/restore scripts | No UI, no scope visualization |
-| [mcp-config-manager](https://github.com/holstein13/mcp-config-manager) | MCP config GUI (28 stars) | Only manages MCP, not memory/skills |
-| [ocodista/claude-dashboard](https://github.com/ocodista/claude-dashboard) | Read-only HTML visualization | No editing, no moving |
+### Direct Competitors
+
+| Tool | Type | Scope View | Move Between Scopes | Threat |
+|---|---|:---:|:---:|:---:|
+| [drewipson/claude-code-config](https://github.com/drewipson/claude-code-config) | VS Code ext (pre-release v0.1.2) | ✅ Tree view | ✅ Right-click move | ⚠️ Medium |
+| [conradBruchmann/claude-admin](https://github.com/conradBruchmann/claude-admin) | Web dashboard (v0.1.9, Feb 2026) | Partial | ❌ | Low |
+| [joeyism/claude-code-config](https://github.com/joeyism/claude-code-config) | TUI | MCP only | ✅ MCP only | Low |
+| [Claude Deck](https://claudedeck.org/) | Web dashboard (React+FastAPI) | ❌ | ❌ | Low |
+| [claude-code-backup](https://github.com/Ranteck/claude-code-backup) | Backup scripts | ❌ | ❌ | None |
+| [ocodista/claude-dashboard](https://github.com/ocodista/claude-dashboard) | Read-only HTML | ❌ | ❌ | None |
+
+### Key Competitor Analysis
+
+**drewipson/claude-code-config** — closest competitor:
+- VS Code extension with tree view of memories, skills, hooks, permissions
+- Right-click to move items between global and project scope
+- **Gaps vs us:** VS Code only (not standalone), no drag-and-drop, no MCP servers, no scope hierarchy visualization, pre-release quality, no web UI
+
+**conradBruchmann/claude-admin** — broadest feature set:
+- Web dashboard covering skills, memory, MCP, agents, plugins, sessions, analytics
+- Shipped Feb 20, 2026 — growing fast (33 commits, v0.1.9)
+- **Gaps vs us:** No scope hierarchy view, no move between scopes, no drag-and-drop. Config editor, not inventory manager
+
+### What Nobody Has Built (our lane)
+
+No existing tool combines all three:
+1. **Unified scope hierarchy** — all item types (memories, skills, MCP, hooks) organized by Global → workspace → project
+2. **Move between scopes** via drag-and-drop or modal UI
+3. **Standalone web dashboard** — not tied to VS Code or any IDE
+
+### Anthropic Official Stance (researched 2026-03-18)
+
+- `/config` is a per-scope settings toggle, NOT a cross-scope inventory
+- No changelog entries, planned issues, or blog posts mention config dashboard / inventory
+- Official plugin `claude-md-management` focuses on CLAUDE.md content quality, not scope management
+- 2026 Anthropic focus: plugins ecosystem, remote control, scheduled tasks, auto memory, 1M context
+- **Risk of Anthropic building this: LOW** — no signals in any channel
 
 **Our unique angles:**
-- Scope-aware hierarchy with drag-and-drop
+- Scope-aware hierarchy with drag-and-drop (nobody has this)
 - Zero dependencies (single Node.js file + SortableJS CDN)
 - Daily git versioning (track what changed over time)
 - Cross-machine diff and export/import
+- Standalone — works anywhere, not locked to VS Code
 
 ## Target User
 
@@ -97,29 +129,44 @@ Child scopes inherit parent scope's memories, skills, and MCP servers.
 
 Current limitation: developed and tested on Ubuntu only. macOS and Windows support planned for future release.
 
+**Cross-platform notes (researched 2026-03-18):**
+- macOS: `~/.claude/` same as Linux, `os.homedir()` works → should work out of the box
+- Windows: `%USERPROFILE%\.claude\`, but path encoding uses `--` for `:\` (known Claude Code bug [#14403](https://github.com/anthropics/claude-code/issues/14403))
+- `CLAUDE_CONFIG_DIR` env var can override config location — should check this first
+- `fs.rename` needs `EXDEV` fallback (copy+delete) for cross-filesystem moves
+
 ---
 
 ## Roadmap
 
-### MVP 1 — View + Move + Sync
+### MVP 1 — View + Move + Sync ✅ DONE (2026-03-18)
 - [x] UI mockup (see `mockup.html`)
-- [ ] Node.js server that scans real `~/.claude/` directory
-- [ ] Scope-aware hierarchy display (Global → projects → sub-projects)
-- [ ] Categories: Memory, Skills, MCP Servers, Config (locked)
-- [ ] SortableJS drag-and-drop between same-type scopes
-- [ ] Confirmation modal on every move
-- [ ] Move files in real `~/.claude/` paths
-- [ ] "Open in Editor" button (VS Code deeplink)
-- [ ] Search and filter (All / Memory / Skills / MCP)
-- [ ] Daily git sync (`sync.sh` + cron) — already working
+- [x] Node.js server that scans real `~/.claude/` directory
+- [x] Scope-aware hierarchy display (Global → projects → sub-projects)
+- [x] Categories: Memory, Skills, MCP Servers, Config, Hooks, Plugins, Plans
+- [x] SortableJS drag-and-drop between same-type scopes
+- [x] Confirmation modal on every move
+- [x] Move files in real `~/.claude/` paths
+- [x] "Open in Editor" button (VS Code deeplink)
+- [x] Search across all items
+- [x] Multi-select filter pills with counts
+- [x] Detail panel on click
+- [x] Move-to modal with scope tree + correct indentation
+- [x] Current scope indicator in move modal
+- [x] Auto-scroll during drag
+- [x] Locked items (config, plugins, plans) cannot be moved
+- [x] Generic — no hardcoded paths, works on any user's machine
+- [x] Frontend/backend separation (4 UI files, 3 backend files)
+- [ ] Daily git sync (`sync.sh` + cron) — already working separately
 - [ ] Export/import tarball
 
-### MVP 2 — Inline Edit + More Types
+### MVP 2 — Inline Edit + Polish
 - [ ] Click item → show full `.md` content in detail panel
 - [ ] Edit content inline, save back to file
-- [ ] Add Hooks management (display by event type, move between settings files)
+- [ ] Improve confirm modal design (show item icon, type, scope badges)
 - [ ] Add Commands management
-- [ ] Add Plugins display (read-only, can't move)
+- [ ] Check `CLAUDE_CONFIG_DIR` env var for custom config paths
+- [ ] `fs.rename` EXDEV fallback (copy + delete)
 - [ ] Add Agents management
 
 ### MVP 3 — Dashboard Stats + Polish
