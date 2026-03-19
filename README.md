@@ -1,5 +1,7 @@
 # Claude Code Organizer
 
+English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
+
 **Organize all your Claude Code memories, skills, MCP servers, and hooks — view by scope hierarchy, move between scopes via drag-and-drop.**
 
 ![Claude Code Organizer Demo](docs/demo.gif)
