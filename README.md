@@ -2,7 +2,7 @@
 
 **Organize all your Claude Code memories, skills, MCP servers, and hooks — view by scope hierarchy, move between scopes via drag-and-drop.**
 
-<video src="docs/demo.webm" autoplay loop muted playsinline width="100%"></video>
+![Claude Code Organizer Demo](docs/demo.gif)
 
 ## The Problem
 
