@@ -47,6 +47,7 @@ async function init() {
   setupSearch();
   setupDetailPanel();
   setupModals();
+  setupScopeDropZones();
 }
 
 async function fetchJson(url) {
@@ -156,6 +157,17 @@ function renderScope(scope, depth) {
   const categories = {};
   for (const item of items) {
     (categories[item.category] ??= []).push(item);
+  }
+
+  // Sort memory items: feedback last, then alphabetical within each subType
+  if (categories.memory) {
+    const subTypeOrder = { project: 0, reference: 1, user: 2, feedback: 3 };
+    categories.memory.sort((a, b) => {
+      const oa = subTypeOrder[a.subType] ?? 2;
+      const ob = subTypeOrder[b.subType] ?? 2;
+      if (oa !== ob) return oa - ob;
+      return a.name.localeCompare(b.name);
+    });
   }
 
   // Count sub-projects
@@ -343,48 +355,6 @@ function initSortable() {
     });
   });
 
-  // ── Scope card as drop zone (for cross-scope drag) ──
-  document.querySelectorAll(".scope-block").forEach(block => {
-    const hdr = block.querySelector(".scope-hdr");
-    if (!hdr) return;
-    const scopeId = hdr.dataset.scopeId;
-
-    block.addEventListener("dragover", (e) => {
-      if (!draggingItem) return;
-      if (draggingItem.scopeId === scopeId) return;
-      e.preventDefault();
-      // Highlight only this scope card (remove from others first)
-      document.querySelectorAll(".scope-block.drop-target").forEach(b => {
-        if (b !== block) b.classList.remove("drop-target");
-      });
-      block.classList.add("drop-target");
-    });
-
-    block.addEventListener("dragleave", (e) => {
-      if (!block.contains(e.relatedTarget)) {
-        block.classList.remove("drop-target");
-      }
-    });
-
-    block.addEventListener("drop", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      block.classList.remove("drop-target");
-      document.querySelectorAll(".scope-block.drop-target").forEach(b => b.classList.remove("drop-target"));
-
-      if (!draggingItem) return;
-      if (draggingItem.scopeId === scopeId) return;
-
-      const item = draggingItem;
-      const fromScope = data.scopes.find(s => s.id === item.scopeId);
-      const toScope = data.scopes.find(s => s.id === scopeId);
-
-      pendingDrag = { item, fromScopeId: item.scopeId, toScopeId: scopeId, revertFn: () => {} };
-      showDragConfirm(item, fromScope, toScope);
-      draggingItem = null;
-    });
-  });
-
   // Scope header toggle — default OPEN
   document.querySelectorAll(".scope-hdr").forEach(hdr => {
     hdr.addEventListener("click", () => {
@@ -436,6 +406,62 @@ function initSortable() {
       }
     });
   });
+}
+
+// ── Scope card drop zones (document-level, bypass SortableJS) ────────
+// SortableJS intercepts per-element dragover events on sortable containers.
+// Using document-level listeners in capture phase ensures highlighting works.
+
+function setupScopeDropZones() {
+  document.addEventListener("dragover", (e) => {
+    if (!draggingItem) return;
+
+    // Find the innermost scope-block under cursor
+    const scopeBlock = e.target.closest(".scope-block");
+
+    // Clear all highlights
+    document.querySelectorAll(".scope-block.drop-target").forEach(b => b.classList.remove("drop-target"));
+
+    if (scopeBlock) {
+      const hdr = scopeBlock.querySelector(":scope > .scope-hdr");
+      const scopeId = hdr?.dataset.scopeId;
+      if (scopeId && scopeId !== draggingItem.scopeId) {
+        e.preventDefault();
+        scopeBlock.classList.add("drop-target");
+      }
+    }
+  }, true); // capture phase
+
+  document.addEventListener("drop", (e) => {
+    if (!draggingItem) return;
+
+    const scopeBlock = e.target.closest(".scope-block");
+    document.querySelectorAll(".scope-block.drop-target").forEach(b => b.classList.remove("drop-target"));
+
+    if (!scopeBlock) return;
+    const hdr = scopeBlock.querySelector(":scope > .scope-hdr");
+    const scopeId = hdr?.dataset.scopeId;
+    if (!scopeId || scopeId === draggingItem.scopeId) return;
+
+    // If drop landed inside a sortable zone, SortableJS onEnd handles it
+    if (e.target.closest(".sortable-zone")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const item = draggingItem;
+    const fromScope = data.scopes.find(s => s.id === item.scopeId);
+    const toScope = data.scopes.find(s => s.id === scopeId);
+
+    pendingDrag = { item, fromScopeId: item.scopeId, toScopeId: scopeId, revertFn: () => {} };
+    showDragConfirm(item, fromScope, toScope);
+    draggingItem = null;
+  }, true); // capture phase
+
+  document.addEventListener("dragend", () => {
+    draggingItem = null;
+    document.querySelectorAll(".scope-block.drop-target").forEach(b => b.classList.remove("drop-target"));
+  }, true); // capture phase
 }
 
 // ── Search ───────────────────────────────────────────────────────────
