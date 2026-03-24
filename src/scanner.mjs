@@ -730,14 +730,11 @@ async function scanSessions(scope) {
       }
     }
 
-    // Find first real user message — skip IDE events, tool results, system messages.
-    // Read more lines if needed since first few lines are often IDE events.
+    // Use last real user message as description (matches Claude Code extension behavior).
+    // Read from tail — the most recent user message best represents the session's current state.
     let description = "";
-    const descLines = headLines.length < 20
-      ? await readFirstLines(fullPath, 30)
-      : headLines;
-    for (const line of descLines) {
-      const parsed = parseJsonLine(line);
+    for (let i = tailLines.length - 1; i >= 0; i--) {
+      const parsed = parseJsonLine(tailLines[i]);
       if (parsed?.message?.role !== "user") continue;
       const content = parsed.message.content;
       let text = null;
@@ -747,7 +744,6 @@ async function scanSessions(scope) {
         text = content.find(c => c.type === "text")?.text;
       }
       if (typeof text !== "string" || !text.trim()) continue;
-      // Skip IDE events and system tags
       if (text.startsWith("<") || text.startsWith("[{\"tool_use_id")) continue;
       description = text.replace(/\s+/g, " ").trim().slice(0, 80);
       break;
