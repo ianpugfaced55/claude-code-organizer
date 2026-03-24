@@ -136,19 +136,19 @@ Child scopes inherit parent scope's memories, skills, and MCP servers.
 
 We analyzed the source code of every Claude Code tool we could find — analytics dashboards (9K+ stars), desktop apps (600+ stars), VS Code extensions, TUI session managers, terminal statuslines. None offered true scope hierarchy + drag-and-drop cross-scope moves in a standalone dashboard.
 
-| What I needed | Desktop app (600+⭐) | VS Code extension | Analytics dashboards | TUI tools | **Claude Code Organizer** |
+| Feature | **Claude Code Organizer** | Desktop app (600+⭐) | VS Code extension | Analytics dashboards | TUI tools |
 |---------|:---:|:---:|:---:|:---:|:---:|
-| True scope hierarchy (Global > Workspace > Project) | No | Partial (global/project only) | No | No | **Yes** |
-| Drag-and-drop moves | No | No | No | No | **Yes** |
-| Cross-scope moves | No | One-click | No | No | **Yes** |
-| Undo on every action | No | No | No | No | **Yes** |
-| Bulk operations | No | No | No | No | **Yes** |
-| Real MCP server management | Global only | Stub (icon only) | No | No | **Yes** |
-| Session management | No | No | Yes | Yes | **Yes** |
-| Search & filter | No | Yes | Yes | No | **Yes** |
-| MCP tools (AI-accessible) | No | No | No | No | **Yes** |
-| Minimal dependencies | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) | **Yes** (MCP SDK only) |
-| Standalone (no IDE) | Yes | No | Yes | Yes | **Yes** |
+| True scope hierarchy (Global > Workspace > Project) | **Yes** | No | Partial (no workspace) | No | No |
+| Drag-and-drop moves | **Yes** | No | No | No | No |
+| Cross-scope moves | **Yes** | No | One-click | No | No |
+| Undo on every action | **Yes** | No | No | No | No |
+| Bulk operations | **Yes** | No | No | No | No |
+| Real MCP server management | **Yes** | Global only | Stub (icon only) | No | No |
+| Session management | **Yes** | No | No | Yes | Yes |
+| Search & filter | **Yes** | No | Yes | Yes | No |
+| MCP tools (AI-accessible) | **Yes** | No | No | No | No |
+| Minimal dependencies | **Yes** (MCP SDK only) | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) |
+| Standalone (no IDE) | **Yes** | Yes | No | Yes | Yes |
 
 ## Platform Support
 
