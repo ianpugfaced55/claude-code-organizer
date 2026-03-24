@@ -730,21 +730,27 @@ async function scanSessions(scope) {
       }
     }
 
+    // Find first real user message — skip IDE events, tool results, system messages.
+    // Read more lines if needed since first few lines are often IDE events.
     let description = "";
-    for (const line of headLines) {
+    const descLines = headLines.length < 20
+      ? await readFirstLines(fullPath, 30)
+      : headLines;
+    for (const line of descLines) {
       const parsed = parseJsonLine(line);
-      const content = parsed?.message?.content;
-      // Content can be a string or an array of {type, text} objects
+      if (parsed?.message?.role !== "user") continue;
+      const content = parsed.message.content;
       let text = null;
       if (typeof content === "string") {
         text = content;
       } else if (Array.isArray(content)) {
         text = content.find(c => c.type === "text")?.text;
       }
-      if (typeof text === "string" && text.trim()) {
-        description = text.replace(/\s+/g, " ").trim().slice(0, 80);
-        break;
-      }
+      if (typeof text !== "string" || !text.trim()) continue;
+      // Skip IDE events and system tags
+      if (text.startsWith("<") || text.startsWith("[{\"tool_use_id")) continue;
+      description = text.replace(/\s+/g, " ").trim().slice(0, 80);
+      break;
     }
 
     items.push({
