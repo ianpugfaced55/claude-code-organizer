@@ -640,7 +640,7 @@ function renderItem(item) {
     </span>`;
 
   return `
-    <div class="item${item.locked ? " locked" : ""}${isSelected ? " selected" : ""}" data-item-key="${esc(key)}" data-path="${esc(item.path)}">
+    <div class="item${item.locked ? " locked" : ""}${isSelected ? " selected" : ""}" data-item-key="${esc(key)}" data-path="${esc(item.path)}" data-category="${esc(item.category)}">
       ${checkbox}
       <span class="item-ico">${icon}</span>
       <span class="item-name">${esc(item.name)}</span>
@@ -657,6 +657,7 @@ function renderItem(item) {
 function renderDetailPanel(resetPreview = false) {
   const title = document.getElementById("detailTitle");
   const crumb = document.getElementById("detailCrumb");
+  const scopeEl = document.getElementById("detailScope");
   const type = document.getElementById("detailType");
   const desc = document.getElementById("detailDesc");
   const size = document.getElementById("detailSize");
@@ -670,6 +671,7 @@ function renderDetailPanel(resetPreview = false) {
   if (!selectedItem) {
     title.textContent = "Select an item";
     crumb.innerHTML = `<span class="crumb-pill">No item selected</span>`;
+    scopeEl.textContent = "—";
     type.textContent = "—";
     desc.textContent = "Select an item to inspect its metadata and preview.";
     size.textContent = "—";
@@ -688,6 +690,7 @@ function renderDetailPanel(resetPreview = false) {
   const scope = getScopeById(selectedItem.scopeId);
   title.textContent = selectedItem.name;
   crumb.innerHTML = renderBreadcrumb(scope);
+  scopeEl.textContent = scope ? capitalize(scope.name) : selectedItem.scopeId;
   type.innerHTML = renderBadge(selectedItem, true);
   desc.textContent = selectedItem.description || "—";
   size.textContent = selectedItem.size || "—";
