@@ -218,14 +218,19 @@ async function discoverScopes() {
     if (!realPath) continue;
 
     const shortName = basename(realPath);
-    const hasMemory = await exists(join(projectsDir, d.name, "memory"));
+    const projectDir = join(projectsDir, d.name);
 
-    if (hasMemory) {
+    // Discover any project directory that has content (not just memory).
+    // Sessions, plans, or other items may exist without a memory/ subfolder.
+    const entries = await readdir(projectDir);
+    const hasContent = entries.some(e => e !== ".DS_Store");
+
+    if (hasContent) {
       projectEntries.push({
         encodedName: d.name,
         realPath,
         shortName,
-        claudeProjectDir: join(projectsDir, d.name),
+        claudeProjectDir: projectDir,
       });
     }
   }
