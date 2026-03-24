@@ -147,7 +147,7 @@ We analyzed the source code of every Claude Code tool we could find — analytic
 | Session management | **Yes** | No | No | Yes | Yes |
 | Search & filter | **Yes** | No | Yes | Yes | No |
 | MCP tools (AI-accessible) | **Yes** | No | No | No | No |
-| Minimal dependencies | **Yes** (MCP SDK only) | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) |
+| Zero dependencies | **Yes** | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) |
 | Standalone (no IDE) | **Yes** | Yes | No | Yes | Yes |
 
 ## Platform Support
