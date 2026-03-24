@@ -192,6 +192,45 @@ async function handleRequest(req, res) {
     }
   }
 
+  // GET /api/session-preview?path=... — parse JSONL session into readable conversation
+  if (path === "/api/session-preview" && req.method === "GET") {
+    const filePath = url.searchParams.get("path");
+    if (!filePath || !filePath.endsWith(".jsonl")) {
+      return json(res, { ok: false, error: "Invalid session path" }, 400);
+    }
+    try {
+      const raw = await readFile(filePath, "utf-8");
+      const lines = raw.trim().split("\n");
+      const messages = [];
+      let title = null;
+
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry.aiTitle) title = entry.aiTitle;
+          if (entry.message?.role && entry.message?.content) {
+            const role = entry.message.role === "user" ? "👤 User" : "🤖 Assistant";
+            const text = entry.message.content
+              .filter(c => c.type === "text")
+              .map(c => c.text)
+              .join("\n");
+            if (text.trim()) {
+              // Truncate long assistant messages
+              const display = text.length > 500 ? text.slice(0, 500) + "\n... (truncated)" : text;
+              messages.push(`${role}:\n${display}`);
+            }
+          }
+        } catch { /* skip malformed lines */ }
+      }
+
+      const header = title ? `# ${title}\n\n` : "";
+      const preview = header + messages.slice(0, 20).join("\n\n---\n\n");
+      return json(res, { ok: true, content: preview || "(empty session)" });
+    } catch {
+      return json(res, { ok: false, error: "Cannot read session" }, 400);
+    }
+  }
+
   // ── Static UI files ──
 
   if (path === "/" || path === "/index.html") {

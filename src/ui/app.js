@@ -922,9 +922,14 @@ async function loadPreview(item) {
       return;
     }
 
-    // Sessions can be large JSONL conversation logs; avoid loading them fully in the UI.
+    // Sessions: parse JSONL into readable conversation preview
     if (item.category === "session") {
-      el.textContent = `Session log: ${item.fileName}\n\nView-only for now. Open the file to inspect the full conversation.`;
+      try {
+        const res = await fetchJson(`/api/session-preview?path=${encodeURIComponent(item.path)}`);
+        el.textContent = res.ok ? res.content : "Cannot load session preview";
+      } catch {
+        el.textContent = "Failed to load session preview";
+      }
       return;
     }
 
