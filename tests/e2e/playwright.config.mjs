@@ -6,7 +6,6 @@ export default defineConfig({
   retries: 0,
   workers: 1, // serial — tests share server state
   use: {
-    headless: false,
-    launchOptions: { slowMo: 50 },
+    headless: true,
   },
 });
