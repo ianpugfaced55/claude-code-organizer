@@ -263,6 +263,71 @@ async function handleRequest(req, res) {
     }
   }
 
+  // POST /api/export — export all scanned items to a folder
+  if (path === "/api/export" && req.method === "POST") {
+    const { exportDir } = await readBody(req);
+    if (!exportDir || !exportDir.startsWith("/")) {
+      return json(res, { ok: false, error: "Missing or invalid exportDir (must be absolute path)" }, 400);
+    }
+
+    try {
+      if (!cachedData) await freshScan();
+      const { mkdir: mk, copyFile: cpf, writeFile: wf, cp: cpDir } = await import("node:fs/promises");
+      const { dirname, relative, basename } = await import("node:path");
+
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const backupRoot = join(exportDir, `cco-backup-${ts}`);
+      let copied = 0;
+      const errors = [];
+
+      for (const item of cachedData.items) {
+        try {
+          const subDir = join(backupRoot, item.category, item.scopeId);
+          await mk(subDir, { recursive: true });
+
+          if (item.category === "skill") {
+            // Skills are directories — copy whole dir
+            const dest = join(subDir, item.fileName || basename(item.path));
+            await cpDir(item.path, dest, { recursive: true });
+          } else if (item.category === "mcp") {
+            // MCP entries live inside JSON — export the full .mcp.json
+            const dest = join(subDir, `${item.name}.json`);
+            const config = item.mcpConfig || {};
+            await wf(dest, JSON.stringify({ [item.name]: config }, null, 2) + "\n");
+          } else {
+            // Regular files — copy directly
+            const dest = join(subDir, item.fileName || basename(item.path));
+            await cpf(item.path, dest);
+          }
+          copied++;
+        } catch (err) {
+          errors.push(`${item.name}: ${err.message}`);
+        }
+      }
+
+      // Write summary
+      const summary = {
+        exportedAt: new Date().toISOString(),
+        totalItems: cachedData.items.length,
+        copied,
+        errors: errors.length,
+        scopes: cachedData.scopes.map(s => ({ id: s.id, name: s.name, type: s.type })),
+        categories: [...new Set(cachedData.items.map(i => i.category))],
+      };
+      await wf(join(backupRoot, "backup-summary.json"), JSON.stringify(summary, null, 2) + "\n");
+
+      return json(res, {
+        ok: true,
+        message: `Exported ${copied} items to ${backupRoot}`,
+        path: backupRoot,
+        copied,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } catch (err) {
+      return json(res, { ok: false, error: `Export failed: ${err.message}` }, 400);
+    }
+  }
+
   // ── Static UI files ──
 
   if (path === "/" || path === "/index.html") {
@@ -302,7 +367,9 @@ export function startServer(port = 3847, maxRetries = 10) {
   let attempt = 0;
   function tryListen(p) {
     server.listen(p, () => {
-      console.log(`Claude Code Organizer running at http://localhost:${p}`);
+      console.log(`\nClaude Code Organizer running at http://localhost:${p}\n`);
+      console.log(`\u2B50 Like it? Star us: https://github.com/mcpware/claude-code-organizer`);
+      console.log(`\uD83D\uDCEC Bugs, ideas, or feature requests? https://github.com/mcpware/claude-code-organizer/issues \u2014 same-day response guaranteed\n`);
     });
   }
 
