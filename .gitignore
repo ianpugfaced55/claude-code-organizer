@@ -9,6 +9,10 @@ node_modules/
 marketing/
 mockup*.html
 ui-*.png
+.market-research-data.json
+*.webm
+Screenshot*.png
+docs/screenshot.png
 PLAN.md
 SHIP.md
 tests/
