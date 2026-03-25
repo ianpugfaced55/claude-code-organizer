@@ -8,8 +8,29 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join, extname, resolve } from "node:path";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
+import https from "node:https";
 import { scan } from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
+
+// ── Update check ─────────────────────────────────────────────────────
+async function checkForUpdate() {
+  const require = createRequire(import.meta.url);
+  const { version: local } = require("../package.json");
+  const data = await new Promise((resolve, reject) => {
+    const req = https.get("https://registry.npmjs.org/@mcpware/claude-code-organizer/latest", { timeout: 3000 }, (res) => {
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => resolve(body));
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+  });
+  const { version: latest } = JSON.parse(data);
+  if (latest && latest !== local) {
+    console.log(`\uD83D\uDCE6 Update available: ${local} \u2192 ${latest}  Run: npm update -g @mcpware/claude-code-organizer\n`);
+  }
+}
 
 // ── Path safety ──────────────────────────────────────────────────────
 
@@ -372,6 +393,8 @@ export function startServer(port = 3847, maxRetries = 10) {
       console.log(`This is my first open-source project. If it helped you, a star would make my week:`);
       console.log(`\u2B50 https://github.com/mcpware/claude-code-organizer`);
       console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/claude-code-organizer/issues \u2014 I fix things same day, I promise\n`);
+      // Non-blocking update check
+      checkForUpdate().catch(() => {});
     });
   }
 
