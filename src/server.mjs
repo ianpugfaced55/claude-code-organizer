@@ -368,8 +368,10 @@ export function startServer(port = 3847, maxRetries = 10) {
   function tryListen(p) {
     server.listen(p, () => {
       console.log(`\nClaude Code Organizer running at http://localhost:${p}\n`);
-      console.log(`\u2B50 Like it? Star us: https://github.com/mcpware/claude-code-organizer`);
-      console.log(`\uD83D\uDCEC Bugs, ideas, or feature requests? https://github.com/mcpware/claude-code-organizer/issues \u2014 same-day response guaranteed\n`);
+      console.log(`Made by a CS dropout with no mass, no team, no budget \u2014 just Claude Code and ADHD.`);
+      console.log(`This is my first open-source project. If it helped you, a star would make my week:`);
+      console.log(`\u2B50 https://github.com/mcpware/claude-code-organizer`);
+      console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/claude-code-organizer/issues \u2014 I fix things same day, I promise\n`);
     });
   }
 
