@@ -77,9 +77,9 @@ Dashboard'u aç, **Context Budget**'a tıkla, **By Tokens**'a geç — en büyü
 
 Bir proje içinde Claude'a "I prefer TypeScript + ESM" dedin ama bu tercih her yerde geçerli olmalı. O memory'yi Project'ten Global'a sürükle. **Bitti. Tek hareket.** Global'daki deploy skill'i aslında tek bir repo için mi? İlgili Project scope'una sürükle — diğer projeler artık görmez.
 
-### Örnek: Eski memory'leri sil
+### Örnek: Eski ve mükerrer öğeleri sil
 
-Claude günlük sohbette söylediğin şeylerden otomatik memory üretiyor. Bir hafta sonra alakası kalmıyor ama her oturumda yüklenmeye devam ediyor. Göz at, oku, sil. **Claude'un senin hakkında ne bildiğini sandığına sen karar verirsin.**
+Claude söylediğin veya yaptığın şeylerden otomatik olarak memory, skill ve MCP server yapılandırması oluşturuyor. Bazıları eskimiş, bazıları scope'lar arasında tekrarlanmış — ama hepsi her oturumda yüklenmeye devam ediyor ve token israf ediyor. Göz at, oku, sil. **Claude'un neyi yükleyeceğine sen karar verirsin — Claude değil.**
 
 ---
 

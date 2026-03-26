@@ -77,9 +77,9 @@ Abre el dashboard, haz clic en **Context Budget**, cambia a **By Tokens** — lo
 
 Le dijiste a Claude "I prefer TypeScript + ESM" dentro de un proyecto, pero esa preferencia debería ser global. Arrastra esa memory de Project a Global. **Listo. Un arrastre.** ¿Un deploy skill en global que solo sirve para un repo? Arrástralo al Project scope correspondiente — los demás proyectos dejan de verlo.
 
-### Ejemplo: Borrar memories obsoletas
+### Ejemplo: Borrar items obsoletos y duplicados
 
-Claude crea memories automáticamente a partir de cosas que dijiste al pasar. Una semana después ya no sirven pero siguen cargándose en cada sesión. Navega, lee, borra. **Tú decides qué cree Claude que sabe de ti.**
+Claude crea memories, skills y configs de servidores MCP automáticamente a partir de cosas que dijiste o hiciste. Algunos quedan obsoletos, otros se duplican entre scopes — pero todos siguen cargándose en cada sesión, desperdiciando tokens. Navega, lee, borra. **Tú decides qué carga Claude — no Claude.**
 
 ---
 

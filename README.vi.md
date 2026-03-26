@@ -77,9 +77,9 @@ Mở dashboard, bấm **Context Budget**, chọn **By Tokens** — kẻ tiêu th
 
 Bạn nói với Claude "I prefer TypeScript + ESM" trong một project, nhưng preference này áp dụng mọi nơi. Kéo memory từ Project sang Global. **Xong. Một cú kéo.** Skill deploy ở global nhưng chỉ dùng cho một repo? Kéo vào Project scope đó — project khác không thấy nữa.
 
-### Ví dụ: Xóa memory cũ
+### Ví dụ: Xóa item cũ và trùng lặp
 
-Claude tự tạo memory từ những câu bạn nói vu vơ. Một tuần sau không liên quan nhưng vẫn nạp mỗi session. Duyệt, đọc, xóa. **Bạn quyết định Claude nên "biết" gì về mình.**
+Claude tự tạo memory, skill, và config MCP server từ những gì bạn nói hoặc làm. Có cái đã lỗi thời, có cái bị trùng giữa các scope — nhưng tất cả vẫn được nạp mỗi session, lãng phí token. Duyệt, đọc, xóa. **Bạn quyết định Claude nạp gì — không phải Claude.**
 
 ---
 

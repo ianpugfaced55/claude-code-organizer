@@ -77,9 +77,9 @@ npx @mcpware/claude-code-organizer
 
 บอก Claude ว่า "I prefer TypeScript + ESM" ตอนอยู่ใน project แต่ preference นี้ควรมีผลทุกที่ ลาก memory จาก Project ไป Global **ลากครั้งเดียวจบ** deploy skill ใน global ที่จริง ๆ ใช้กับ repo เดียว? ลากไป Project scope นั้น — project อื่นจะไม่เห็นอีก
 
-### ตัวอย่าง: ลบ memory เก่า
+### ตัวอย่าง: ลบ item เก่าและซ้ำซ้อน
 
-Claude สร้าง memory อัตโนมัติจากสิ่งที่พูดเล่น ๆ ผ่านไปสัปดาห์ไม่เกี่ยวแล้ว แต่ยังโหลดทุก session เปิดดู อ่าน ลบ **คุณเป็นคนกำหนดว่า Claude ควรรู้อะไรเกี่ยวกับคุณ**
+Claude สร้าง memory, skill และ config ของ MCP server โดยอัตโนมัติจากสิ่งที่คุณพูดหรือทำ บางอันล้าสมัย บางอันซ้ำกันข้าม scope — แต่ทั้งหมดยังโหลดทุก session เปลืองเปล่า ๆ เปิดดู อ่าน ลบ **คุณเป็นคนกำหนดว่า Claude โหลดอะไร — ไม่ใช่ Claude**
 
 ---
 

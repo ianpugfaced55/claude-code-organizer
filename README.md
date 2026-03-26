@@ -75,9 +75,9 @@ Open the dashboard, click **Context Budget**, switch to **By Tokens** — the bi
 
 You told Claude "I prefer TypeScript + ESM" while inside a project, but that preference applies everywhere. Drag that memory from Project to Global. **Done. One drag.** A deploy skill sitting in global only makes sense for one repo? Drag it into that Project scope — other projects won't see it anymore.
 
-### Example: Delete stale memories
+### Example: Delete stale and duplicate items
 
-Claude auto-creates memories from things you said casually, or things it *thought* you wanted remembered. A week later they're irrelevant but still loaded into every session. Browse, read, delete. **You control what Claude thinks it knows about you.**
+Claude auto-creates memories, skills, and MCP server configs from things you said or did. Some become outdated, others get duplicated across scopes — yet all of them still load into every session, wasting tokens. Browse, read, delete. **You decide what Claude loads — not Claude.**
 
 ---
 

@@ -77,9 +77,9 @@ Apri la dashboard, clicca **Context Budget**, passa a **By Tokens** — i maggio
 
 Hai detto a Claude "preferisco TypeScript + ESM" dentro un progetto, ma quella preferenza vale ovunque. Trascina quella memory da Project a Global. **Fatto. Un drag.** Una skill di deploy in global che serve solo per un repo? Trascinala nel Project scope giusto — gli altri progetti non la vedranno più.
 
-### Esempio: Eliminare memory obsolete
+### Esempio: Eliminare elementi obsoleti e duplicati
 
-Claude crea automaticamente memory da cose dette al volo. Dopo una settimana non servono più, ma continuano a essere caricate in ogni sessione. Sfoglia, leggi, elimina. **Sei tu a decidere cosa Claude pensa di sapere su di te.**
+Claude crea automaticamente memory, skill e configurazioni di server MCP da cose che hai detto o fatto. Alcuni diventano obsoleti, altri si duplicano tra scope diversi — ma tutti continuano a essere caricati in ogni sessione, sprecando token. Sfoglia, leggi, elimina. **Sei tu a decidere cosa carica Claude — non Claude.**
 
 ---
 

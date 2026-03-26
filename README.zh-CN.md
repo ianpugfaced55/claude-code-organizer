@@ -74,9 +74,9 @@ npx @mcpware/claude-code-organizer
 
 你在某个项目里跟 Claude 说「我喜欢 TypeScript + ESM」，但这个偏好应该全局生效。把那条记忆从 Project 拖到 Global。**搞定，拖一下。** deploy 技能放在 global 但其实只有一个仓库用？拖进那个 Project scope — 其他项目就看不到了。
 
-### 示例：删过时记忆
+### 示例：删除过时和重复的项目
 
-Claude 会自动记住你随口说的东西。一周后没用了但还是每次 session 都加载。浏览、阅读、删除。**你来决定 Claude 以为自己知道你什么。**
+Claude 会自动创建记忆、技能、MCP server 配置，来自你说过或做过的事。有些过时了，有些在不同 scope 重复了 — 但全部仍然每次 session 都加载，浪费 tokens。浏览、阅读、删除。**Claude 加载什么，由你决定 — 不是 Claude。**
 
 ---
 

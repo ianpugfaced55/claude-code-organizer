@@ -77,9 +77,9 @@ Buka dashboard, klik **Context Budget**, pilih **By Tokens** — konsumen terbes
 
 Kamu bilang ke Claude "I prefer TypeScript + ESM" di satu project, padahal preferensi itu berlaku global. Drag memory itu dari Project ke Global. **Selesai. Sekali drag.** Skill deploy di global tapi cuma relevan untuk satu repo? Drag ke Project scope itu — project lain nggak akan lihat lagi.
 
-### Contoh: Hapus memory usang
+### Contoh: Hapus item usang dan duplikat
 
-Claude bikin memory otomatis dari hal yang kamu ucapkan sambil lalu. Seminggu kemudian sudah nggak relevan tapi tetap dimuat tiap session. Jelajahi, baca, hapus. **Kamu yang tentukan apa yang Claude anggap dia tahu soal kamu.**
+Claude otomatis bikin memory, skill, dan config MCP server dari hal yang kamu ucapkan atau lakukan. Ada yang sudah basi, ada yang terduplikasi di scope berbeda — tapi semuanya tetap dimuat tiap session, buang-buang token. Jelajahi, baca, hapus. **Kamu yang tentukan apa yang Claude muat — bukan Claude.**
 
 ---
 
