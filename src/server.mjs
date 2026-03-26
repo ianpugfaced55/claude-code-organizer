@@ -6,7 +6,7 @@
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { join, extname, resolve } from "node:path";
+import { join, extname, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import https from "node:https";
@@ -132,6 +132,48 @@ async function handleRequest(req, res) {
     return json(res, data);
   }
 
+  // ── Context Budget helpers ──────────────────────────────────────────
+
+  /**
+   * Expand @import references in CLAUDE.md files.
+   * Claude Code expands these at session start — imported content is
+   * verbatim-merged into the parent. Max depth: 5 hops.
+   */
+  async function expandImports(text, basePath, depth = 0) {
+    if (depth >= 5) return text;
+    const lines = text.split("\n");
+    const expanded = [];
+    for (const line of lines) {
+      const match = line.match(/^@(.+)$/);
+      if (match) {
+        let importPath = match[1].trim();
+        // Support ~ expansion
+        if (importPath.startsWith("~")) {
+          importPath = importPath.replace(/^~/, HOME);
+        }
+        importPath = resolve(basePath, importPath);
+        try {
+          let imported = await readFile(importPath, "utf-8");
+          imported = await expandImports(imported, dirname(importPath), depth + 1);
+          expanded.push(imported);
+        } catch {
+          expanded.push(line); // keep original line if import fails
+        }
+      } else {
+        expanded.push(line);
+      }
+    }
+    return expanded.join("\n");
+  }
+
+  /**
+   * Strip block-level HTML comments from CLAUDE.md content.
+   * Official docs: "Block-level HTML comments are stripped before injection."
+   */
+  function stripHtmlComments(text) {
+    return text.replace(/<!--[\s\S]*?-->/g, "");
+  }
+
   // GET /api/context-budget?scope=<id> — token budget breakdown for a scope
   if (path === "/api/context-budget" && req.method === "GET") {
     const scopeId = url.searchParams.get("scope");
@@ -195,25 +237,43 @@ async function handleRequest(req, res) {
             // MCP config JSON — the config itself is tiny, tool schemas are deferred
             text = JSON.stringify(item.mcpConfig || {}, null, 2);
           } else if (item.category === "skill") {
-            // Claude Code loads skill name + full frontmatter description (not truncated).
+            // Claude Code injects skills in TWO places:
+            // 1. Skill tool description: <available_skills>"name": description</available_skills>
+            // 2. system-reminder: "- name: description" (re-injected on tool calls)
+            //
+            // We count the <available_skills> format since that's the primary injection.
+            // The Skill tool boilerplate (~430 tokens) is added as a constant below.
+            //
             // Read SKILL.md and extract the frontmatter description field.
             const skillMdPath = join(item.path, "SKILL.md");
             try {
               const skillContent = await readFile(skillMdPath, "utf-8");
               const fmMatch = skillContent.match(/^---\n([\s\S]*?)\n---/);
               if (fmMatch) {
-                // Extract full description from frontmatter
                 const descMatch = fmMatch[1].match(/description:\s*(.+(?:\n(?![\w-]+:).+)*)/);
-                text = `${item.name}\n${descMatch ? descMatch[1].trim() : item.description || ""}`;
+                // Match actual injection format: "skill-name": Description text
+                text = `"${item.name}": ${descMatch ? descMatch[1].trim() : item.description || ""}`;
               } else {
-                text = `${item.name}\n${item.description || ""}`;
+                text = `"${item.name}": ${item.description || ""}`;
               }
             } catch {
-              text = `${item.name}\n${item.description || ""}`;
+              text = `"${item.name}": ${item.description || ""}`;
             }
           } else if (item.path) {
             // CLAUDE.md, rules, commands, agents: read file content
             text = await readFile(item.path, "utf-8");
+
+            // For CLAUDE.md files: expand @imports and strip HTML comments
+            // (Claude Code does both before injecting into context)
+            if (item.category === "config" && LOADED_CONFIG_NAMES.has(item.name)) {
+              text = await expandImports(text, dirname(item.path));
+              text = stripHtmlComments(text);
+            }
+
+            // For rules: strip HTML comments too
+            if (item.category === "rule") {
+              text = stripHtmlComments(text);
+            }
           }
         } catch {}
 
@@ -235,6 +295,16 @@ async function handleRequest(req, res) {
           // MCP tool schemas are deferred when ToolSearch is active (>10% threshold)
           // We put MCP in deferred since most setups trigger ToolSearch
           deferred.push(entry);
+        } else if (item.category === "rule" && text) {
+          // Rules with `paths:` frontmatter are on-demand (loaded only when
+          // Claude reads files matching the pattern). Rules without `paths:`
+          // are loaded at session start alongside CLAUDE.md.
+          const fm = text.match(/^---\n([\s\S]*?)\n---/)?.[1] || "";
+          if (/^paths:/m.test(fm)) {
+            deferred.push(entry);
+          } else {
+            loaded.push(entry);
+          }
         } else {
           loaded.push(entry);
         }
@@ -289,23 +359,48 @@ async function handleRequest(req, res) {
       addMemoryIndexFiles(parentIds, inheritedResult.loaded),
     ]);
 
-    // System overhead (from /context measurements):
-    // Always loaded: system prompt (~6.5K) + system tools loaded (~6K) = ~12.5K
-    // Deferred: system tools deferred (~10.5K)
-    const SYSTEM_LOADED = 12500;
-    const SYSTEM_DEFERRED = 10500;
+    // System overhead — rough estimates that change every Claude Code release.
+    // These numbers are intentionally rounded. Don't over-tune them.
+    // Run `/context` in Claude Code to see YOUR actual numbers.
+    //
+    // As of v2.1.84 (March 2026), real measurements range:
+    //   System loaded: 14.8K (Sonnet 200K) to 20.2K (Opus 200K)
+    //   System deferred: ~7K
+    //   Skill boilerplate: ~400 when skills exist
+    //
+    // We use ~18K as a middle-ground estimate.
+    const SYSTEM_LOADED = 18000;
+    const SYSTEM_DEFERRED = 7000;
+    const hasSkills = [...currentResult.loaded, ...inheritedResult.loaded]
+      .some(i => i.category === "skill");
+    const SKILL_BOILERPLATE = hasSkills ? 400 : 0;
 
     // MCP tool schemas — deferred when ToolSearch active
-    // Average ~3100 tokens per UNIQUE server based on /context measurements
+    // Average ~3100 tokens per UNIQUE server based on /context measurements.
+    // Real-world range: 385 (SQLite) to 17,000 (Jira). 3.1K is the median.
+    // Note: /context has a known 3x inflation bug for MCP tools (counts hidden
+    // tool-use system prompt per-tool instead of once). Our offline estimate
+    // may actually be MORE accurate than /context for MCP tools.
     // Claude Code deduplicates by name (priority: local > project > user),
     // so we count unique names, not total entries.
+    // Filter out disabled servers — Claude Code doesn't load them.
     const allMcpItems = cachedData.items.filter(
-      i => i.category === "mcp" && (i.scopeId === scopeId || parentIds.includes(i.scopeId))
+      i => i.category === "mcp" &&
+        (i.scopeId === scopeId || parentIds.includes(i.scopeId)) &&
+        !i.mcpConfig?.disabled
     );
     const uniqueMcpNames = new Set(allMcpItems.map(i => i.name));
     const mcpServerCount = allMcpItems.length; // total entries (for display)
     const mcpUniqueCount = uniqueMcpNames.size; // unique names (for estimation)
     const mcpToolSchemaEstimate = mcpUniqueCount * 3100;
+
+    // CLAUDE.md injection wrapper (~100 tokens for <system-reminder> tags + headers).
+    // Small enough that precision doesn't matter.
+    const CLAUDEMD_WRAPPER = 100;
+
+    // Autocompact buffer — Claude Code reserves ~33K for compaction (was 45K before 2026).
+    // This changes occasionally. Don't over-tune it.
+    const AUTOCOMPACT_BUFFER = 33000;
 
     // Totals
     const currentLoaded = currentResult.loaded;
@@ -315,7 +410,9 @@ async function handleRequest(req, res) {
 
     const loadedTotal = currentLoaded.reduce((s, i) => s + i.tokens, 0)
       + inheritedLoaded.reduce((s, i) => s + i.tokens, 0)
-      + SYSTEM_LOADED;
+      + SYSTEM_LOADED
+      + SKILL_BOILERPLATE
+      + CLAUDEMD_WRAPPER;
     const deferredTotal = currentDeferred.reduce((s, i) => s + i.tokens, 0)
       + inheritedDeferred.reduce((s, i) => s + i.tokens, 0)
       + SYSTEM_DEFERRED
@@ -332,6 +429,7 @@ async function handleRequest(req, res) {
         currentScope: { items: currentLoaded, total: currentLoaded.reduce((s, i) => s + i.tokens, 0) },
         inherited: { items: inheritedLoaded, total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) },
         system: SYSTEM_LOADED,
+        skillBoilerplate: SKILL_BOILERPLATE,
         total: loadedTotal,
       },
       deferred: {
@@ -345,13 +443,14 @@ async function handleRequest(req, res) {
       },
       total,
       contextLimit,
+      autocompactBuffer: AUTOCOMPACT_BUFFER,
       percentUsed: Math.round((loadedTotal / contextLimit) * 1000) / 10,
       percentWithDeferred: Math.round((total / contextLimit) * 1000) / 10,
       method,
       // Keep old fields for backward compat with existing UI
       currentScope: { items: [...currentLoaded, ...currentDeferred], total: currentLoaded.reduce((s, i) => s + i.tokens, 0) + currentDeferred.reduce((s, i) => s + i.tokens, 0) },
       inherited: { items: [...inheritedLoaded, ...inheritedDeferred], total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) + inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
-      systemOverhead: { base: SYSTEM_LOADED, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, total: SYSTEM_LOADED + SYSTEM_DEFERRED + mcpToolSchemaEstimate, confidence: "estimated" },
+      systemOverhead: { base: SYSTEM_LOADED, skillBoilerplate: SKILL_BOILERPLATE, claudeMdWrapper: CLAUDEMD_WRAPPER, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, autocompactBuffer: AUTOCOMPACT_BUFFER, total: SYSTEM_LOADED + SYSTEM_DEFERRED + SKILL_BOILERPLATE + CLAUDEMD_WRAPPER + mcpToolSchemaEstimate, confidence: "estimated" },
     });
   }
 

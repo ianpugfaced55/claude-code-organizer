@@ -119,9 +119,17 @@
       </div>
 
       <div class="ctx-budget-summary" id="ctxBudgetSummary">
-        <div class="ctx-budget-bar-wrap" id="ctxBudgetBarWrap">
-          <div class="ctx-budget-bar" id="ctxBudgetBar"></div>
-          <div class="ctx-budget-tooltip hidden" id="ctxBudgetTooltip"></div>
+        <div class="ctx-budget-bar-row">
+          <div class="ctx-budget-bar-wrap" id="ctxBudgetBarWrap">
+            <div class="ctx-budget-bar" id="ctxBudgetBar"></div>
+            <div class="ctx-budget-bar-deferred" id="ctxBudgetBarDeferred"></div>
+            <div class="ctx-budget-tooltip hidden" id="ctxBudgetTooltip"></div>
+          </div>
+          <div class="ctx-window-toggle" id="ctxWindowToggle">
+            <button class="ctx-win-btn active" data-limit="200000">200K</button>
+            <button class="ctx-win-btn" data-limit="1000000">1M</button>
+            <div class="ctx-window-tooltip">Select your context window size to see the estimation</div>
+          </div>
         </div>
         <div class="ctx-budget-total" id="ctxBudgetTotal">—</div>
       </div>

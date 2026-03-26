@@ -80,6 +80,21 @@ const BADGE_CLASS = {
   rule: "ib-config",
 };
 
+/**
+ * Open a file in VS Code via URI scheme.
+ * Handles Windows paths (C:\foo\bar → /C:/foo/bar) and
+ * directories (skills are folders, open SKILL.md inside).
+ */
+function openInEditor(filePath) {
+  if (!filePath) return;
+  // Windows: backslashes → forward slashes, ensure leading /
+  let p = filePath.replace(/\\/g, "/");
+  if (/^[A-Z]:/i.test(p)) p = "/" + p;
+  // Skills are directories — try opening SKILL.md inside
+  if (!p.match(/\.\w+$/)) p = p.replace(/\/$/, "") + "/SKILL.md";
+  window.open(`vscode://file${p}`, "_blank");
+}
+
 const SHORT_DATE = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -233,7 +248,7 @@ function setupItemList() {
       if (actionBtn.dataset.action === "move") {
         openMoveModal(item);
       } else if (actionBtn.dataset.action === "open") {
-        window.open(`vscode://file${item.path}`, "_blank");
+        openInEditor(item.path);
       } else if (actionBtn.dataset.action === "delete") {
         openDeleteModal(item);
       }
@@ -298,7 +313,7 @@ function setupItemList() {
 function setupDetailPanel() {
   document.getElementById("detailClose").addEventListener("click", closeDetail);
   document.getElementById("detailOpen").addEventListener("click", () => {
-    if (selectedItem) window.open(`vscode://file${selectedItem.path}`, "_blank");
+    if (selectedItem) openInEditor(selectedItem.path);
   });
   document.getElementById("detailMove").addEventListener("click", () => {
     if (selectedItem && (canMoveItem(selectedItem) || selectedItem.locked)) openMoveModal(selectedItem);
@@ -994,34 +1009,40 @@ function renderContextBudget(budget) {
   const deferred = budget.deferred?.total || 0;
   const limit = budget.contextLimit;
 
-  // Progress bar — only shows always-loaded tokens
-  const pct = Math.min(Math.round((loaded / limit) * 1000) / 10, 100);
-  const bar = document.getElementById("ctxBudgetBar");
-  bar.style.width = `${pct}%`;
-  bar.className = `ctx-budget-bar ${pct > 25 ? "ctx-bar-warn" : ""} ${pct > 50 ? "ctx-bar-danger" : ""}`;
+  // Progress bar — green only, shows always-loaded tokens
+  const loadedPct = Math.min(Math.round((loaded / limit) * 1000) / 10, 100);
+  const deferredPct = Math.min(Math.round((deferred / limit) * 1000) / 10, 100);
+  const remainingPct = Math.max(0, Math.round((100 - loadedPct) * 10) / 10);
 
-  // Tooltip on hover
-  const barWrap = document.getElementById("ctxBudgetBarWrap");
-  const tooltip = document.getElementById("ctxBudgetTooltip");
-  tooltip.innerHTML = `<b>Always loaded: ${formatTokens(loaded)}</b> (${pct}% of ${formatTokens(limit)})<br>Deferred (on-demand): ${formatTokens(deferred)}<br>Combined maximum: ${formatTokens(loaded + deferred)} (${budget.percentWithDeferred}%)`;
-  barWrap.addEventListener("mouseenter", () => tooltip.classList.remove("hidden"));
-  barWrap.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
+  const bar = document.getElementById("ctxBudgetBar");
+  bar.style.width = `${loadedPct}%`;
+  bar.className = `ctx-budget-bar ${loadedPct > 25 ? "ctx-bar-warn" : ""} ${loadedPct > 50 ? "ctx-bar-danger" : ""}`;
+
+  // Hide deferred bar
+  const barDeferred = document.getElementById("ctxBudgetBarDeferred");
+  barDeferred.style.width = "0%";
+
+  // Autocompact buffer eats into remaining space
+  const acBuffer = budget.autocompactBuffer || 33000;
+  const acPct = Math.round((acBuffer / limit) * 1000) / 10;
+  const usablePct = Math.max(0, Math.round((100 - loadedPct - acPct) * 10) / 10);
 
   // Summary text
   document.getElementById("ctxBudgetTotal").innerHTML = `
-    <b>${formatTokens(loaded)}</b> loaded · <b>${formatTokens(deferred)}</b> deferred
-    <span class="ctx-pct">(${pct}% of ${formatTokens(limit)})</span>
+    <b>${formatTokens(loaded)}</b> loaded
+    <span class="ctx-pct">(${loadedPct}% of ${formatTokens(limit)})</span>
     <span class="ctx-badge ctx-badge-${budget.method}">${budget.method}</span>
-    <div class="ctx-budget-explain">If you start a Claude Code session under this directory, <b>${formatTokens(loaded)}</b> are immediately loaded into context. Another <b>${formatTokens(deferred)}</b> are deferred and only loaded when Claude needs specific tools.
-    <br><br>The remaining <b>${(100 - pct).toFixed(1)}%</b> is available for your conversation. The fuller the context, the less accurate Claude becomes — an effect known as context rot.</div>
-    <div class="ctx-window-toggle">
-      Context window:
-      <button class="ctx-win-btn ${limit === 200000 ? "active" : ""}" data-limit="200000">200K</button>
-      <button class="ctx-win-btn ${limit === 1000000 ? "active" : ""}" data-limit="1000000">1M</button>
+    <div class="ctx-budget-detail-toggle" onclick="this.nextElementSibling.classList.toggle('hidden');this.querySelector('.ctx-toggle-arrow').textContent=this.nextElementSibling.classList.contains('hidden')?'▸':'▾'"><span class="ctx-toggle-arrow">▸</span> What does this mean?</div>
+    <div class="ctx-budget-explain hidden">
+      When you start a Claude Code session under this directory, <b>${formatTokens(loaded)}</b> (${loadedPct}%) is already loaded into context before you type anything — this includes your CLAUDE.md files, memory, skills, rules, and system overhead.
+      <br><br>After the autocompact buffer (~${acPct}%, reserved by Claude Code for compaction), about <b>${usablePct}%</b> is left for your conversation. ${deferred > 0 ? `Within that space, up to <b>${deferredPct}%</b> (${formatTokens(deferred)}) could be consumed by deferred tools — Claude loads these selectively as needed, not all at once.` : ""}
+      <br><br>The fuller the context, the less accurate Claude becomes — an effect known as <b>context rot</b>.
     </div>`;
 
-  // Context window toggle handler
-  document.querySelectorAll(".ctx-win-btn").forEach(btn => {
+  // Context window toggle handler — buttons are in HTML now, not injected
+  document.querySelectorAll("#ctxWindowToggle .ctx-win-btn").forEach(btn => {
+    // Update active state to match current limit
+    btn.classList.toggle("active", parseInt(btn.dataset.limit) === limit);
     btn.addEventListener("click", () => {
       const newLimit = parseInt(btn.dataset.limit);
       _ctxWindowLimit = newLimit;
@@ -1074,17 +1095,21 @@ function renderBudgetBody() {
     html += renderByTokens(loadedItems);
   }
 
-  // System loaded
+  // System loaded — rough estimate, changes with each CC release
+  const sysLoaded = budget.alwaysLoaded?.system || 0;
+  const skillBp = budget.alwaysLoaded?.skillBoilerplate || 0;
+  const sysLoadedTotal = sysLoaded + skillBp;
   html += `<div class="ctx-section">
     <div class="ctx-section-hdr">
       <span class="ctx-collapse-btn">▸</span>
       <span class="ctx-section-title">System (loaded)</span>
-      <span class="ctx-section-total">${formatTokens(budget.alwaysLoaded?.system || 0)}</span>
+      <span class="ctx-section-total">~${formatTokens(sysLoadedTotal)}</span>
       <span class="ctx-badge ctx-badge-estimated">estimated</span>
     </div>
     <div class="ctx-section-items hidden">
-      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System prompt</span><span class="ctx-item-tokens">~6.5K tok</span></div>
-      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System tools (loaded)</span><span class="ctx-item-tokens">~6.0K tok</span></div>
+      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System prompt + tools</span><span class="ctx-item-tokens">~${formatTokens(sysLoaded)}</span></div>
+      ${skillBp ? `<div class="ctx-item"><span class="ctx-item-icon">⚡</span><span class="ctx-item-name">Skill tool overhead</span><span class="ctx-item-tokens">~${formatTokens(skillBp)}</span></div>` : ""}
+      <div class="ctx-item ctx-item-note"><span class="ctx-item-icon"></span><span class="ctx-item-name">Run /context in Claude Code for exact numbers</span></div>
     </div>
   </div>`;
 
@@ -1114,6 +1139,19 @@ function renderBudgetBody() {
       <div class="ctx-item"><span class="ctx-item-icon">🔌</span><span class="ctx-item-name">MCP tool schemas (${budget.deferred?.mcpUniqueCount || 0} unique servers × ~3.1K avg)</span><span class="ctx-item-tokens">${formatTokens(budget.deferred?.mcpToolSchemas || 0)}</span></div>
     </div>
   </div>`;
+
+  // Autocompact buffer — reserved by Claude Code for compaction
+  const acBuffer = budget.autocompactBuffer || 0;
+  if (acBuffer > 0) {
+    const acPct = Math.round((acBuffer / budget.contextLimit) * 1000) / 10;
+    html += `<div class="ctx-section ctx-autocompact">
+      <div class="ctx-section-hdr">
+        <span class="ctx-section-title">Autocompact buffer (reserved)</span>
+        <span class="ctx-section-total">${formatTokens(acBuffer)} (${acPct}%)</span>
+        <span class="ctx-badge ctx-badge-estimated">estimated</span>
+      </div>
+    </div>`;
+  }
 
   body.innerHTML = html;
 

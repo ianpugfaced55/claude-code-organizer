@@ -867,7 +867,8 @@ body {
 .ctx-budget-summary { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
 .ctx-budget-bar-wrap {
   height: 10px; border-radius: 5px; background: var(--surface-inset);
-  border: 1px solid var(--border-light); position: relative; cursor: help;
+  border: 1px solid var(--border-light); position: relative;
+  display: flex; overflow: hidden;
 }
 .ctx-budget-tooltip {
   position: absolute; top: 18px; left: 0; right: 0; z-index: 10;
@@ -878,8 +879,13 @@ body {
 .ctx-budget-tooltip b { color: var(--sidebar-text-bright); }
 .ctx-budget-tooltip.hidden { display: none; }
 .ctx-budget-bar {
-  height: 100%; border-radius: 5px; transition: width 600ms ease;
-  background: var(--accent); overflow: hidden;
+  height: 100%; border-radius: 5px 0 0 5px; transition: width 600ms ease;
+  background: var(--accent); overflow: hidden; flex-shrink: 0;
+}
+.ctx-budget-bar-deferred {
+  height: 100%; transition: width 600ms ease;
+  background: var(--border-light); overflow: hidden; flex-shrink: 0;
+  opacity: 0.6;
 }
 .ctx-budget-bar.ctx-bar-warn { background: oklch(0.70 0.16 85); }
 .ctx-budget-bar.ctx-bar-danger { background: var(--danger); }
@@ -894,6 +900,22 @@ body {
   color: var(--text-muted); line-height: 1.6;
 }
 .ctx-budget-explain b { color: var(--text-primary); font-weight: 700; }
+.ctx-budget-detail-toggle {
+  margin-top: 6px; font-size: 0.68rem; color: var(--text-muted); cursor: pointer;
+  user-select: none;
+}
+.ctx-budget-detail-toggle:hover { color: var(--accent); }
+.ctx-toggle-arrow { display: inline-block; width: 12px; }
+.ctx-bar-legend {
+  display: flex; gap: 14px; margin-top: 8px; font-size: 0.62rem; color: var(--text-muted);
+}
+.ctx-bar-legend-item { display: flex; align-items: center; gap: 4px; }
+.ctx-bar-legend-swatch {
+  width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+}
+.ctx-bar-legend-swatch.loaded { background: var(--accent); }
+.ctx-bar-legend-swatch.deferred { background: var(--border-light); opacity: 0.6; }
+.ctx-item-note { font-size: 0.6rem; color: var(--text-faint); font-style: italic; padding: 2px 0; }
 .ctx-cost-label { font-size: 0.58rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; }
 
 .ctx-badge {
@@ -969,10 +991,22 @@ body {
 .ctx-deferred-header { color: var(--text-muted); border-bottom-color: var(--border); margin-top: 16px; }
 .ctx-loaded-total, .ctx-deferred-total { margin-left: auto; font-size: 0.75rem; }
 
-.ctx-window-toggle {
-  margin-top: 8px; font-size: 0.65rem; color: var(--text-muted);
-  display: flex; align-items: center; gap: 6px;
+.ctx-budget-bar-row {
+  display: flex; align-items: center; gap: 10px;
 }
+.ctx-budget-bar-row .ctx-budget-bar-wrap { flex: 1; }
+.ctx-window-toggle {
+  font-size: 0.65rem; color: var(--text-muted);
+  display: flex; align-items: center; gap: 3px; flex-shrink: 0;
+  position: relative;
+}
+.ctx-window-tooltip {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--sidebar-bg); color: var(--sidebar-text); border-radius: 6px;
+  padding: 6px 10px; font-size: 0.6rem; line-height: 1.5; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25); pointer-events: none; z-index: 10;
+}
+.ctx-window-toggle:hover .ctx-window-tooltip { display: block; }
 .ctx-win-btn {
   font-size: 0.62rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
   border: 1px solid var(--border); background: var(--surface-inset); color: var(--text-secondary);
