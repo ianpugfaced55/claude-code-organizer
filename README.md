@@ -10,7 +10,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 **A visual config manager for Claude Code. See everything Claude has stored — memories, skills, MCP servers, rules, commands, agents — organized by scope. Drag items between scopes, find duplicates, clean up the mess.**
 
-> First open source project — built solo with Claude Code. If it helped you, a star would make my week.
+> 100+ stars in 5 days! It had just 11 stars when I first posted it on Reddit 3 days ago. Real users tested it, gave feedback, and helped shape it into what it is now. This is my first open source project — thank you to everyone who starred, tested, and reported issues. This is just the beginning.
 
 ![Claude Code Organizer Demo](docs/demo.gif)
 
@@ -48,7 +48,7 @@ All of this wrong-scope and duplicate config has a cost. This is a real project 
 
 ![Context Budget](docs/cptoken.png)
 
-**21.9K tokens immediately loaded into context, with another 115.4K deferred for MCP tools.** On a 200K window, that's 11% gone before you type — and grows as Claude invokes tools during the session. The fuller the context, the less accurate Claude becomes (**context rot**).
+**~29K tokens immediately loaded into context, with another ~112K deferred for MCP tools.** On a 200K window, that's ~14% gone before you type — and grows as Claude selectively loads tools during the session. The fuller the context, the less accurate Claude becomes (**context rot**).
 
 And these numbers only cover what we can measure offline. During a session, Claude silently adds more: rule files re-injected after every tool call, file change diffs, and your full conversation history resent on every API call.
 
@@ -106,7 +106,7 @@ How does this compare to other Claude Code tools?
 - **Bulk operations** — Select mode: tick multiple items, move or delete all at once
 - **Same-type safety** — Each category moves to its own directory — memories to memory/, skills to skills/, commands to commands/, etc.
 - **Search & filter** — Real-time search across all items, filter by category with smart pill hiding (zero-count pills collapse into "+N more")
-- **Context Budget** — See what's always loaded vs deferred, per-item token counts, inherited scope breakdown, and 200K/1M context window toggle
+- **Context Budget** — See what's always loaded vs deferred, per-item token counts (ai-tokenizer ~99.8% accuracy), inherited scope breakdown, @import expansion, and 200K/1M context window toggle
 - **Detail panel** — Click any item to see full metadata, content preview, file path, and open in VS Code
 - **Session inspector** — Parsed conversation previews with speaker labels, session titles, and metadata
 - **11 categories** — Memories, skills, MCP servers, commands, agents, rules, configs, hooks, plugins, plans, and sessions
@@ -117,7 +117,7 @@ How does this compare to other Claude Code tools?
 - **Real file moves** — Actually moves files in `~/.claude/`, not just a viewer
 - **Path traversal protection** — All file endpoints validate paths are within HOME directory
 - **Cross-device support** — Automatic copy+delete fallback when rename fails across filesystems (Docker/WSL)
-- **124 E2E tests** — Playwright test suite covering scanner accuracy, context budget calculations, filesystem verification, security, and all 11 categories
+- **Tested** — E2E test suite covering scanner accuracy, context budget calculations, filesystem verification, security, and all 11 categories
 
 
 ## Quick Start
@@ -186,8 +186,8 @@ Child scopes inherit parent scope's memories, skills, MCP servers, commands, age
 |----------|:------:|
 | Ubuntu / Linux | Supported |
 | macOS (Intel + Apple Silicon) | Supported (community-tested on Sequoia M3) |
-| Windows | Not yet |
-| WSL | Should work (untested) |
+| Windows 11 | Supported (community-tested, VS Code extension) |
+| WSL | Supported |
 
 ## Project Structure
 
@@ -195,7 +195,8 @@ Child scopes inherit parent scope's memories, skills, MCP servers, commands, age
 src/
   scanner.mjs       # Scans ~/.claude/ — 11 categories, pure data, no side effects
   mover.mjs         # Moves/deletes files between scopes — safety checks + undo support
-  server.mjs        # HTTP server — 8 REST endpoints
+  server.mjs        # HTTP server — REST API + context budget engine
+  tokenizer.mjs     # Token counting (ai-tokenizer ~99.8% accuracy, bytes/4 fallback)
   mcp-server.mjs    # MCP server — 4 tools for AI clients (scan, move, delete, destinations)
   ui/
     index.html       # Three-panel layout with resizable dividers
