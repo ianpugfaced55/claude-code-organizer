@@ -151,48 +151,60 @@ async function handleRequest(req, res) {
       if (!cur) break;
     }
 
-    // Categories that Claude loads into context at session start.
-    // Sessions and plugins are NOT loaded into context.
-    // Individual memory files are NOT pre-loaded — only MEMORY.md (index) is.
-    // Claude reads individual memories on-demand via readFileState.
-    const CONTEXT_CATEGORIES = new Set(["memory", "skill", "config", "mcp", "rule", "command", "agent", "hook"]);
+    // What Claude Code loads at session start (from official docs):
+    //
+    // ALWAYS LOADED (in context every request):
+    //   - System prompt (~6.5K)
+    //   - System tools loaded part (~6K)
+    //   - CLAUDE.md files (full content, all ancestor dirs)
+    //   - .claude/rules/*.md (unconditional, no paths frontmatter)
+    //   - MEMORY.md (first 200 lines or 25KB)
+    //   - Skill descriptions (2% of context budget)
+    //   - Git status
+    //
+    // DEFERRED (reserved, loaded on-demand via ToolSearch):
+    //   - MCP tool definitions (~90% of MCP tokens when ToolSearch active)
+    //   - System tools deferred part (~10.5K)
+    //
+    // NOT IN CONTEXT:
+    //   - settings.json / settings.local.json (client config only)
+    //   - Individual memory files (on-demand via readFileState)
+    //   - Hook scripts (run externally, zero context)
+    //   - Skills with disable-model-invocation: true
 
-    // Tokenize items for a set of scope IDs, return per-item breakdown
+    // Items that are always loaded into context
+    const ALWAYS_LOADED_CATEGORIES = new Set(["skill", "rule", "command", "agent"]);
+    // Config items: CLAUDE.md is loaded, settings.json is NOT
+    const LOADED_CONFIG_NAMES = new Set(["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.md (managed)"]);
+
+    // Tokenize items, classifying as loaded vs not
     async function tokenizeItems(scopeIds) {
       const items = cachedData.items.filter(
-        i => scopeIds.includes(i.scopeId) && CONTEXT_CATEGORIES.has(i.category)
+        i => scopeIds.includes(i.scopeId) &&
+          (ALWAYS_LOADED_CATEGORIES.has(i.category) ||
+           (i.category === "config" && LOADED_CONFIG_NAMES.has(i.name)) ||
+           i.category === "mcp")
       );
-      const results = [];
+      const loaded = [];
+      const deferred = [];
 
       for (const item of items) {
         let text = "";
         try {
-          if (item.category === "memory") {
-            // Individual memory files are NOT pre-loaded into context.
-            // Only MEMORY.md (index) is loaded at session start.
-            // Individual files are read on-demand via readFileState.
-            // Skip all individual memory items from context budget.
-            continue;
-          } else if (item.category === "mcp") {
-            // MCP: tokenize the config JSON (name-only placeholders at startup)
+          if (item.category === "mcp") {
+            // MCP config JSON — the config itself is tiny, tool schemas are deferred
             text = JSON.stringify(item.mcpConfig || {}, null, 2);
-          } else if (item.category === "hook") {
-            // Hooks: tokenize the hook command/prompt
-            text = item.description || "";
           } else if (item.category === "skill") {
-            // Skills load name + description only (not full SKILL.md)
             text = `${item.name}\n${item.description || ""}`;
           } else if (item.path) {
-            // Config, rule, command, agent: read file content
+            // CLAUDE.md, rules, commands, agents: read file content
             text = await readFile(item.path, "utf-8");
           }
-        } catch {
-          // File unreadable — use empty string
-        }
+        } catch {}
 
         const { tokens, confidence } = await countTokens(text);
         const scopeObj = cachedData.scopes.find(s => s.id === item.scopeId);
-        results.push({
+        const entry = {
           category: item.category,
           subType: item.subType,
           name: item.name,
@@ -202,24 +214,31 @@ async function handleRequest(req, res) {
           sizeBytes: item.sizeBytes || 0,
           scopeId: item.scopeId,
           scopeName: scopeObj?.name || item.scopeId,
-        });
+        };
+
+        if (item.category === "mcp") {
+          // MCP tool schemas are deferred when ToolSearch is active (>10% threshold)
+          // We put MCP in deferred since most setups trigger ToolSearch
+          deferred.push(entry);
+        } else {
+          loaded.push(entry);
+        }
       }
 
-      return results;
+      return { loaded, deferred };
     }
 
-    const [currentItems, inheritedItems, method] = await Promise.all([
+    const [currentResult, inheritedResult, method] = await Promise.all([
       tokenizeItems([scopeId]),
       tokenizeItems(parentIds),
       getMethod(),
     ]);
 
-    // Add MEMORY.md files — these are not in scanner items but ARE pre-loaded
+    // Add MEMORY.md files — always loaded (first 200 lines / 25KB)
     async function addMemoryIndexFiles(scopeIds, targetArray) {
       for (const sid of scopeIds) {
         const s = cachedData.scopes.find(sc => sc.id === sid);
         if (!s) continue;
-        // Find MEMORY.md path for this scope
         let memPath = null;
         if (s.id === "global") {
           memPath = join(CLAUDE_DIR, "memory", "MEMORY.md");
@@ -228,7 +247,10 @@ async function handleRequest(req, res) {
         }
         if (!memPath) continue;
         try {
-          const text = await readFile(memPath, "utf-8");
+          let text = await readFile(memPath, "utf-8");
+          // Claude loads first 200 lines or 25KB of MEMORY.md
+          const lines = text.split("\n").slice(0, 200);
+          text = lines.join("\n").slice(0, 25000);
           const { tokens, confidence } = await countTokens(text);
           if (tokens > 0) {
             targetArray.push({
@@ -243,57 +265,78 @@ async function handleRequest(req, res) {
               scopeName: s.name,
             });
           }
-        } catch { /* file doesn't exist */ }
+        } catch {}
       }
     }
 
     await Promise.all([
-      addMemoryIndexFiles([scopeId], currentItems),
-      addMemoryIndexFiles(parentIds, inheritedItems),
+      addMemoryIndexFiles([scopeId], currentResult.loaded),
+      addMemoryIndexFiles(parentIds, inheritedResult.loaded),
     ]);
 
-    // System overhead: ~22.5K (system prompt ~6.6K + system tools ~15.9K)
-    // Based on /context measurements
-    const SYSTEM_OVERHEAD = 22500;
+    // System overhead (from /context measurements):
+    // Always loaded: system prompt (~6.5K) + system tools loaded (~6K) = ~12.5K
+    // Deferred: system tools deferred (~10.5K)
+    const SYSTEM_LOADED = 12500;
+    const SYSTEM_DEFERRED = 10500;
 
-    // MCP overhead: actual tool schema definitions are much larger than the config JSON.
-    // Measured via /context: 50K across 16 servers = ~3100 per server average.
-    // Range: 195 tok (rss-reader, 2 tools) to 8962 tok (Google Calendar, 9 tools).
-    const mcpServerCount = cachedData.items.filter(
+    // MCP tool schemas — deferred when ToolSearch active
+    // Average ~3100 tokens per UNIQUE server based on /context measurements
+    // Claude Code deduplicates by name (priority: local > project > user),
+    // so we count unique names, not total entries.
+    const allMcpItems = cachedData.items.filter(
       i => i.category === "mcp" && (i.scopeId === scopeId || parentIds.includes(i.scopeId))
-    ).length;
-    const mcpOverhead = mcpServerCount * 3100;
+    );
+    const uniqueMcpNames = new Set(allMcpItems.map(i => i.name));
+    const mcpServerCount = allMcpItems.length; // total entries (for display)
+    const mcpUniqueCount = uniqueMcpNames.size; // unique names (for estimation)
+    const mcpToolSchemaEstimate = mcpUniqueCount * 3100;
 
-    const currentTotal = currentItems.reduce((sum, i) => sum + i.tokens, 0);
-    const inheritedTotal = inheritedItems.reduce((sum, i) => sum + i.tokens, 0);
-    const total = currentTotal + inheritedTotal + SYSTEM_OVERHEAD + mcpOverhead;
+    // Totals
+    const currentLoaded = currentResult.loaded;
+    const currentDeferred = currentResult.deferred;
+    const inheritedLoaded = inheritedResult.loaded;
+    const inheritedDeferred = inheritedResult.deferred;
 
-    const CONTEXT_LIMIT = 200000;
+    const loadedTotal = currentLoaded.reduce((s, i) => s + i.tokens, 0)
+      + inheritedLoaded.reduce((s, i) => s + i.tokens, 0)
+      + SYSTEM_LOADED;
+    const deferredTotal = currentDeferred.reduce((s, i) => s + i.tokens, 0)
+      + inheritedDeferred.reduce((s, i) => s + i.tokens, 0)
+      + SYSTEM_DEFERRED
+      + mcpToolSchemaEstimate;
+
+    const total = loadedTotal + deferredTotal;
+    const contextLimit = parseInt(url.searchParams.get("limit")) || 200000;
 
     return json(res, {
       ok: true,
       scopeId,
       scopeName: scope.name,
-      currentScope: {
-        items: currentItems,
-        total: currentTotal,
+      alwaysLoaded: {
+        currentScope: { items: currentLoaded, total: currentLoaded.reduce((s, i) => s + i.tokens, 0) },
+        inherited: { items: inheritedLoaded, total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) },
+        system: SYSTEM_LOADED,
+        total: loadedTotal,
       },
-      inherited: {
-        items: inheritedItems,
-        total: inheritedTotal,
-      },
-      systemOverhead: {
-        base: SYSTEM_OVERHEAD,
-        mcpServers: mcpServerCount,
-        mcpEstimate: mcpOverhead,
-        total: SYSTEM_OVERHEAD + mcpOverhead,
-        confidence: "estimated",
-        citation: "GitHub #30103, ClaudeCodeCamp measurements",
+      deferred: {
+        currentScope: { items: currentDeferred, total: currentDeferred.reduce((s, i) => s + i.tokens, 0) },
+        inherited: { items: inheritedDeferred, total: inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
+        systemTools: SYSTEM_DEFERRED,
+        mcpToolSchemas: mcpToolSchemaEstimate,
+        mcpServerCount,
+        mcpUniqueCount,
+        total: deferredTotal,
       },
       total,
-      contextLimit: CONTEXT_LIMIT,
-      percentUsed: Math.round((total / CONTEXT_LIMIT) * 1000) / 10,
+      contextLimit,
+      percentUsed: Math.round((loadedTotal / contextLimit) * 1000) / 10,
+      percentWithDeferred: Math.round((total / contextLimit) * 1000) / 10,
       method,
+      // Keep old fields for backward compat with existing UI
+      currentScope: { items: [...currentLoaded, ...currentDeferred], total: currentLoaded.reduce((s, i) => s + i.tokens, 0) + currentDeferred.reduce((s, i) => s + i.tokens, 0) },
+      inherited: { items: [...inheritedLoaded, ...inheritedDeferred], total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) + inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
+      systemOverhead: { base: SYSTEM_LOADED, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, total: SYSTEM_LOADED + SYSTEM_DEFERRED + mcpToolSchemaEstimate, confidence: "estimated" },
     });
   }
 

@@ -962,7 +962,7 @@ function openContextBudget(scopeId) {
   document.getElementById("ctxBudgetBar").style.width = "0%";
   document.getElementById("ctxBudgetTotal").textContent = "—";
 
-  fetchJson(`/api/context-budget?scope=${encodeURIComponent(scopeId)}`)
+  fetchJson(`/api/context-budget?scope=${encodeURIComponent(scopeId)}&limit=${_ctxWindowLimit}`)
     .then(renderContextBudget)
     .catch(() => {
       document.getElementById("ctxBudgetBody").innerHTML = `<div class="ctx-budget-loading">Failed to load context budget</div>`;
@@ -980,6 +980,7 @@ function isContextBudgetOpen() {
 let _budgetData = null;
 let _budgetSort = "scope"; // "scope" | "category" | "tokens"
 let _budgetSortDir = "desc"; // "desc" (high→low) | "asc" (low→high)
+let _ctxWindowLimit = 200000; // 200K default, user can toggle to 1M
 
 function renderContextBudget(budget) {
   if (!budget.ok) {
@@ -989,35 +990,50 @@ function renderContextBudget(budget) {
 
   _budgetData = budget;
 
-  // Update progress bar
-  const pct = Math.min(budget.percentUsed, 100);
+  const loaded = budget.alwaysLoaded?.total || 0;
+  const deferred = budget.deferred?.total || 0;
+  const limit = budget.contextLimit;
+
+  // Progress bar — only shows always-loaded tokens
+  const pct = Math.min(Math.round((loaded / limit) * 1000) / 10, 100);
   const bar = document.getElementById("ctxBudgetBar");
   bar.style.width = `${pct}%`;
-  bar.className = `ctx-budget-bar ${pct > 50 ? "ctx-bar-warn" : ""} ${pct > 75 ? "ctx-bar-danger" : ""}`;
+  bar.className = `ctx-budget-bar ${pct > 25 ? "ctx-bar-warn" : ""} ${pct > 50 ? "ctx-bar-danger" : ""}`;
 
   // Tooltip on hover
   const barWrap = document.getElementById("ctxBudgetBarWrap");
   const tooltip = document.getElementById("ctxBudgetTooltip");
-  tooltip.innerHTML = `<b>${formatTokens(budget.total)}</b> = ${formatTokens(budget.currentScope.total)} current + ${formatTokens(budget.inherited.total)} inherited + ${formatTokens(budget.systemOverhead.total)} system<br>Runtime injections (rules re-injection, file diffs, system reminders) are <b>not included</b> — actual mid-session usage will be higher.`;
+  tooltip.innerHTML = `<b>Always loaded: ${formatTokens(loaded)}</b> (${pct}% of ${formatTokens(limit)})<br>Deferred (on-demand): ${formatTokens(deferred)}<br>Combined maximum: ${formatTokens(loaded + deferred)} (${budget.percentWithDeferred}%)`;
   barWrap.addEventListener("mouseenter", () => tooltip.classList.remove("hidden"));
   barWrap.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
 
-  // Update total + explanation
-  // Cost estimate: Opus $15/M input, Sonnet $3/M input
-  const costOpus = (budget.total / 1_000_000 * 15).toFixed(2);
-  const costSonnet = (budget.total / 1_000_000 * 3).toFixed(2);
+  // Summary text
   document.getElementById("ctxBudgetTotal").innerHTML = `
-    <b>${formatTokens(budget.total)}</b> of ${formatTokens(budget.contextLimit)} used
-    <span class="ctx-pct">(${budget.percentUsed}%)</span>
+    <b>${formatTokens(loaded)}</b> loaded · <b>${formatTokens(deferred)}</b> deferred
+    <span class="ctx-pct">(${pct}% of ${formatTokens(limit)})</span>
     <span class="ctx-badge ctx-badge-${budget.method}">${budget.method}</span>
-    <div class="ctx-budget-explain">If you start a Claude Code session under this directory, <b>${formatTokens(budget.total)}</b> are already loaded before you start any conversation. Est. cost per session: <b>$${costOpus} USD</b> <span class="ctx-cost-label">Opus</span> · <b>$${costSonnet} USD</b> <span class="ctx-cost-label">Sonnet</span>
-    <br><br>The remaining <b>${(100 - budget.percentUsed).toFixed(1)}%</b> is shared between your messages, Claude's responses, and tool results before context compression kicks in. The fuller the context, the less accurate Claude becomes — an effect known as context rot.</div>`;
+    <div class="ctx-budget-explain">If you start a Claude Code session under this directory, <b>${formatTokens(loaded)}</b> are immediately loaded into context. Another <b>${formatTokens(deferred)}</b> are deferred and only loaded when Claude needs specific tools.
+    <br><br>The remaining <b>${(100 - pct).toFixed(1)}%</b> is available for your conversation. The fuller the context, the less accurate Claude becomes — an effect known as context rot.</div>
+    <div class="ctx-window-toggle">
+      Context window:
+      <button class="ctx-win-btn ${limit === 200000 ? "active" : ""}" data-limit="200000">200K</button>
+      <button class="ctx-win-btn ${limit === 1000000 ? "active" : ""}" data-limit="1000000">1M</button>
+    </div>`;
 
-  // Update note with method info
+  // Context window toggle handler
+  document.querySelectorAll(".ctx-win-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const newLimit = parseInt(btn.dataset.limit);
+      _ctxWindowLimit = newLimit;
+      openContextBudget(budget.scopeId);
+    });
+  });
+
+  // Note
   const noteEl = document.getElementById("ctxBudgetNote");
-  noteEl.innerHTML = budget.method === "measured"
-    ? `Token counts are measured with ~99.8% accuracy. System overhead is estimated from known baselines.`
-    : `Token counts are estimated. Install <code>ai-tokenizer</code> for higher accuracy. System overhead is estimated from known baselines.`;
+  noteEl.textContent = budget.method === "measured"
+    ? "Token counts measured with ~99.8% accuracy. System overhead estimated from known baselines."
+    : "Token counts estimated (bytes/4). Install ai-tokenizer for higher accuracy.";
 
   renderBudgetBody();
 }
@@ -1027,11 +1043,16 @@ function renderBudgetBody() {
   if (!budget) return;
   const body = document.getElementById("ctxBudgetBody");
 
-  // Tag items with their source for rendering
-  const allItems = [
-    ...budget.currentScope.items.map(i => ({ ...i, _source: "current", _sourceLabel: budget.scopeName })),
-    ...budget.inherited.items.map(i => ({ ...i, _source: "inherited", _sourceLabel: i.scopeName || i.scopeId })),
+  // Tag items with source + loaded/deferred status
+  const loadedItems = [
+    ...(budget.alwaysLoaded?.currentScope?.items || []).map(i => ({ ...i, _source: "current", _sourceLabel: budget.scopeName, _loaded: true })),
+    ...(budget.alwaysLoaded?.inherited?.items || []).map(i => ({ ...i, _source: "inherited", _sourceLabel: i.scopeName || i.scopeId, _loaded: true })),
   ];
+  const deferredItems = [
+    ...(budget.deferred?.currentScope?.items || []).map(i => ({ ...i, _source: "current", _sourceLabel: budget.scopeName, _loaded: false })),
+    ...(budget.deferred?.inherited?.items || []).map(i => ({ ...i, _source: "inherited", _sourceLabel: i.scopeName || i.scopeId, _loaded: false })),
+  ];
+  const allItems = [...loadedItems, ...deferredItems];
 
   // Sort controls
   const arrow = _budgetSortDir === "desc" ? "↓" : "↑";
@@ -1042,16 +1063,57 @@ function renderBudgetBody() {
     <button class="ctx-sort-btn ${_budgetSort === "tokens" ? "active" : ""}" data-sort="tokens">By Tokens${_budgetSort === "tokens" ? " " + arrow : ""}</button>
   </div>`;
 
+  // Always Loaded section
+  html += `<div class="ctx-loaded-header">Always Loaded <span class="ctx-loaded-total">${formatTokens(budget.alwaysLoaded?.total || 0)}</span></div>`;
+
   if (_budgetSort === "scope") {
-    html += renderByScope(budget, allItems);
+    html += renderByScope(budget, loadedItems);
   } else if (_budgetSort === "category") {
-    html += renderByCategory(allItems);
+    html += renderByCategory(loadedItems);
   } else {
-    html += renderByTokens(allItems);
+    html += renderByTokens(loadedItems);
   }
 
-  // System Overhead (always at bottom)
-  html += renderSystemOverhead(budget);
+  // System loaded
+  html += `<div class="ctx-section">
+    <div class="ctx-section-hdr">
+      <span class="ctx-collapse-btn">▸</span>
+      <span class="ctx-section-title">System (loaded)</span>
+      <span class="ctx-section-total">${formatTokens(budget.alwaysLoaded?.system || 0)}</span>
+      <span class="ctx-badge ctx-badge-estimated">estimated</span>
+    </div>
+    <div class="ctx-section-items hidden">
+      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System prompt</span><span class="ctx-item-tokens">~6.5K tok</span></div>
+      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System tools (loaded)</span><span class="ctx-item-tokens">~6.0K tok</span></div>
+    </div>
+  </div>`;
+
+  // Deferred section
+  html += `<div class="ctx-deferred-header">Deferred (on-demand) <span class="ctx-deferred-total">${formatTokens(budget.deferred?.total || 0)}</span></div>`;
+
+  if (deferredItems.length > 0) {
+    if (_budgetSort === "scope") {
+      html += renderByScope(budget, deferredItems);
+    } else if (_budgetSort === "category") {
+      html += renderByCategory(deferredItems);
+    } else {
+      html += renderByTokens(deferredItems);
+    }
+  }
+
+  // System + MCP deferred
+  html += `<div class="ctx-section">
+    <div class="ctx-section-hdr">
+      <span class="ctx-collapse-btn">▸</span>
+      <span class="ctx-section-title">System + MCP tools (deferred)</span>
+      <span class="ctx-section-total">${formatTokens((budget.deferred?.systemTools || 0) + (budget.deferred?.mcpToolSchemas || 0))}</span>
+      <span class="ctx-badge ctx-badge-estimated">estimated</span>
+    </div>
+    <div class="ctx-section-items hidden">
+      <div class="ctx-item"><span class="ctx-item-icon">🔧</span><span class="ctx-item-name">System tools (deferred)</span><span class="ctx-item-tokens">${formatTokens(budget.deferred?.systemTools || 0)}</span></div>
+      <div class="ctx-item"><span class="ctx-item-icon">🔌</span><span class="ctx-item-name">MCP tool schemas (${budget.deferred?.mcpUniqueCount || 0} unique servers × ~3.1K avg)</span><span class="ctx-item-tokens">${formatTokens(budget.deferred?.mcpToolSchemas || 0)}</span></div>
+    </div>
+  </div>`;
 
   body.innerHTML = html;
 
@@ -1215,41 +1277,7 @@ function renderBudgetItem(item, icon, showSource) {
   </div>`;
 }
 
-function renderSystemOverhead(budget) {
-  return `<div class="ctx-section">
-    <div class="ctx-section-hdr">
-      <span class="ctx-collapse-btn">▸</span>
-      <span class="ctx-section-title">System Overhead</span>
-      <span class="ctx-section-total">${formatTokens(budget.systemOverhead.total)}</span>
-      <span class="ctx-badge ctx-badge-estimated">estimated</span>
-    </div>
-    <div class="ctx-section-items hidden">
-      <div class="ctx-item">
-        <span class="ctx-item-icon">🔧</span>
-        <span class="ctx-item-name">Base scaffold (system prompt + tools)</span>
-        <span class="ctx-item-tokens">${formatTokens(budget.systemOverhead.base)}</span>
-      </div>
-      ${budget.systemOverhead.mcpServers > 0 ? `
-      <div class="ctx-item">
-        <span class="ctx-item-icon">🔌</span>
-        <span class="ctx-item-name">MCP servers (${budget.systemOverhead.mcpServers} defined × ~1.5K avg)</span>
-        <span class="ctx-item-tokens">${formatTokens(budget.systemOverhead.mcpEstimate)}</span>
-      </div>` : ""}
-    </div>
-  </div>
-  <div class="ctx-section ctx-section-runtime">
-    <div class="ctx-section-hdr">
-      <span class="ctx-section-title">Runtime Injections</span>
-      <span class="ctx-section-total">unknown</span>
-    </div>
-    <div class="ctx-runtime-note">The numbers above only reflect what is loaded at session start. During a session, Claude Code injects additional tokens that we cannot measure offline:<ul class="ctx-runtime-list">
-      <li><b>Rule re-injection</b> — all rule files are re-injected after every tool call. After ~30 tool calls this alone can consume ~46% of context</li>
-      <li><b>File change diffs</b> — when files you've read or written are modified externally (e.g. by a linter), the full diff is injected as a hidden system-reminder</li>
-      <li><b>System reminders</b> — malware warnings, token usage nudges, and other hidden injections on every message</li>
-      <li><b>Conversation history</b> — your messages + Claude's responses + all tool results are resent on every API call</li>
-    </ul>Your actual token usage mid-session will be significantly higher than the pre-session estimate shown above.</div>
-  </div>`;
-}
+// Removed — system overhead now rendered inline in renderBudgetBody
 
 function formatTokens(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K tok`;

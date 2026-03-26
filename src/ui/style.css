@@ -960,6 +960,27 @@ body {
 .ctx-cat-group { }
 .ctx-cat-items.hidden { display: none; }
 
+.ctx-loaded-header, .ctx-deferred-header {
+  font-size: 0.78rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 10px 0 6px; margin-top: 4px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 2px solid var(--accent); margin-bottom: 8px;
+}
+.ctx-loaded-header { color: var(--accent-text); }
+.ctx-deferred-header { color: var(--text-muted); border-bottom-color: var(--border); margin-top: 16px; }
+.ctx-loaded-total, .ctx-deferred-total { margin-left: auto; font-size: 0.75rem; }
+
+.ctx-window-toggle {
+  margin-top: 8px; font-size: 0.65rem; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.ctx-win-btn {
+  font-size: 0.62rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--surface-inset); color: var(--text-secondary);
+  cursor: pointer; font-family: inherit;
+}
+.ctx-win-btn:hover { border-color: var(--accent); }
+.ctx-win-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .ctx-section-runtime .ctx-section-hdr { border-bottom-style: dashed; }
 .ctx-runtime-note {
   font-size: 0.66rem; color: var(--text-muted); line-height: 1.6; padding: 6px 0;

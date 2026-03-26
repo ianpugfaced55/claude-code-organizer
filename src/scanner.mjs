@@ -459,8 +459,9 @@ async function scanMcpServers(scope) {
     // All global MCP sources — show ALL entries so user can manage duplicates:
     // 1. ~/.claude/.mcp.json (user scope — `claude mcp add -s user`)
     // 2. ~/.mcp.json (alternate user location)
-    // 3. Enterprise managed: /etc/claude-code/managed-mcp.json
-    // 4. mcpServers inside settings.json / settings.local.json
+    // 3. ~/.claude.json mcpServers (user scope — `claude mcp add` default)
+    // 4. Enterprise managed: /etc/claude-code/managed-mcp.json
+    // 5. mcpServers inside settings.json / settings.local.json
     mcpPaths.push({ path: join(CLAUDE_DIR, ".mcp.json"), label: "global" });
     mcpPaths.push({ path: join(HOME, ".mcp.json"), label: "global" });
     mcpPaths.push({ path: join(MANAGED_DIR, "managed-mcp.json"), label: "managed" });
@@ -470,6 +471,64 @@ async function scanMcpServers(scope) {
     if (await exists(repoMcp)) {
       mcpPaths.push({ path: repoMcp, label: scope.type });
     }
+  }
+
+  // Also scan ~/.claude.json — where `claude mcp add` stores servers
+  // User-scope servers are at top-level mcpServers
+  // Project-scope servers are at projects[repoDir].mcpServers
+  const claudeJsonPath = join(HOME, ".claude.json");
+  const claudeJsonContent = await safeReadFile(claudeJsonPath);
+  if (claudeJsonContent) {
+    try {
+      const claudeJson = JSON.parse(claudeJsonContent);
+      // User-scope MCP servers (global)
+      if (scope.id === "global" && claudeJson.mcpServers) {
+        for (const [name, serverConfig] of Object.entries(claudeJson.mcpServers)) {
+          if (!serverConfig || typeof serverConfig !== "object") continue;
+          const cmd = serverConfig.command || serverConfig.url || "";
+          const args = serverConfig.args || [];
+          const desc = [cmd, ...args].filter(Boolean).join(" ").slice(0, 100);
+          items.push({
+            category: "mcp",
+            scopeId: scope.id,
+            name,
+            fileName: ".claude.json",
+            description: desc || "(HTTP MCP)",
+            subType: "mcp",
+            size: "",
+            sizeBytes: 0,
+            mtime: "",
+            ctime: "",
+            path: claudeJsonPath,
+            mcpConfig: serverConfig,
+          });
+        }
+      }
+      // Project-scope MCP servers
+      if (scope.repoDir && claudeJson.projects?.[scope.repoDir]?.mcpServers) {
+        const projMcp = claudeJson.projects[scope.repoDir].mcpServers;
+        for (const [name, serverConfig] of Object.entries(projMcp)) {
+          if (!serverConfig || typeof serverConfig !== "object") continue;
+          const cmd = serverConfig.command || serverConfig.url || "";
+          const args = serverConfig.args || [];
+          const desc = [cmd, ...args].filter(Boolean).join(" ").slice(0, 100);
+          items.push({
+            category: "mcp",
+            scopeId: scope.id,
+            name,
+            fileName: ".claude.json",
+            description: desc || "(HTTP MCP)",
+            subType: "mcp",
+            size: "",
+            sizeBytes: 0,
+            mtime: "",
+            ctime: "",
+            path: claudeJsonPath,
+            mcpConfig: serverConfig,
+          });
+        }
+      }
+    } catch {}
   }
 
   for (const { path: mcpPath, label } of mcpPaths) {
