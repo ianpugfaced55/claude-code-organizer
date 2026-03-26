@@ -2134,7 +2134,7 @@ test.describe('Export', () => {
     expect(summary.categories.length).toBeGreaterThan(0);
   });
 
-  test('export creates category subdirectories', async () => {
+  test('export creates scope subdirectories', async () => {
     const exportDir = join(env.tmpDir, 'exports');
     const res = await fetch(`${env.baseURL}/api/export`, {
       method: 'POST',
@@ -2144,20 +2144,22 @@ test.describe('Export', () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
 
-    // Should have memory, skill, mcp subdirectories at minimum
+    // Should have scope directories + backup summary
     const entries = await readdir(data.path);
-    expect(entries).toContain('memory');
-    expect(entries).toContain('skill');
+    expect(entries).toContain('global');
     expect(entries).toContain('backup-summary.json');
   });
 
-  test('export with missing exportDir returns 400', async () => {
+  test('export with missing exportDir uses default ~/.claude/exports/', async () => {
     const res = await fetch(`${env.baseURL}/api/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.path).toContain('.claude');
+    expect(data.path).toContain('exports');
   });
 
   test('export with relative path returns 400', async () => {
@@ -2447,6 +2449,300 @@ test.describe('Context Budget', () => {
     // Close via X button
     await page.locator('#ctxBudgetClose').click();
     await expect(page.locator('#ctxBudgetPanel')).toBeHidden();
+
+    env.cleanup();
+  });
+});
+
+// ── Scanner Accuracy ────────────────────────────────────────────────
+
+test.describe('Scanner Accuracy', () => {
+
+  test('scan item counts match filesystem for every category', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    // Count items per scope per category from scan
+    const scanCounts = {};
+    for (const item of data.items) {
+      const key = `${item.scopeId}::${item.category}`;
+      scanCounts[key] = (scanCounts[key] || 0) + 1;
+    }
+
+    // Global memories: should be exactly 4 (we created 4 + MEMORY.md which is skipped)
+    const globalMemCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'memory').length;
+    expect(globalMemCount).toBe(4);
+
+    // Global skills: at least 2 (deploy, lint-check) — may include auto-installed /cco skill
+    const globalSkillCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'skill').length;
+    expect(globalSkillCount).toBeGreaterThanOrEqual(2);
+
+    // Global MCP: should be exactly 2 (test-server, dev-tools)
+    const globalMcpCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'mcp').length;
+    expect(globalMcpCount).toBe(2);
+
+    // Global commands: exactly 1 (deploy)
+    const globalCmdCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'command').length;
+    expect(globalCmdCount).toBe(1);
+
+    // Global agents: exactly 1 (code-reviewer)
+    const globalAgentCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'agent').length;
+    expect(globalAgentCount).toBe(1);
+
+    // Global plans: exactly 1 (roadmap)
+    const globalPlanCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'plan').length;
+    expect(globalPlanCount).toBe(1);
+
+    // Global hooks: exactly 1 (PreToolUse)
+    const globalHookCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'hook').length;
+    expect(globalHookCount).toBe(1);
+
+    // Global config: at least settings.json
+    const globalConfigCount = data.items.filter(i => i.scopeId === 'global' && i.category === 'config').length;
+    expect(globalConfigCount).toBeGreaterThanOrEqual(1);
+
+    env.cleanup();
+  });
+
+  test('every scanned item path exists on disk', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    let missing = 0;
+    for (const item of data.items) {
+      if (!item.path) continue;
+      // Skills are directories, others are files
+      const exists = await fileExists(item.path);
+      if (!exists) {
+        // Config items may list paths that don't exist (optional files)
+        if (item.category !== 'config') missing++;
+      }
+    }
+    expect(missing).toBe(0);
+
+    env.cleanup();
+  });
+
+  test('no duplicate items within the same scope', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    // Within each scope, same category+path should not appear twice
+    const seen = new Set();
+    const duplicates = [];
+    for (const item of data.items) {
+      const key = `${item.scopeId}::${item.category}::${item.path}::${item.name}`;
+      if (seen.has(key)) {
+        duplicates.push(key);
+      }
+      seen.add(key);
+    }
+    expect(duplicates).toEqual([]);
+
+    env.cleanup();
+  });
+
+  test('project skills are NOT counted under global scope', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    // "local-build" skill is project-level, should NOT appear in global
+    const globalItems = data.items.filter(i => i.scopeId === 'global');
+    const leakedSkill = globalItems.find(i => i.name === 'local-build');
+    expect(leakedSkill).toBeUndefined();
+
+    env.cleanup();
+  });
+
+  test('project items stay in their own scope', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    // workspace_config memory should be in workspace scope only
+    const workspaceScope = data.scopes.find(s => s.name === 'workspace');
+    const workspaceItems = data.items.filter(i => i.scopeId === workspaceScope.id);
+    const wsConfig = workspaceItems.find(i => i.name === 'workspace_config');
+    expect(wsConfig).toBeTruthy();
+
+    // Should NOT appear in global
+    const globalWsConfig = data.items.find(i => i.scopeId === 'global' && i.name === 'workspace_config');
+    expect(globalWsConfig).toBeUndefined();
+
+    // sub_app_notes should only be in nested scope
+    const nestedScope = data.scopes.find(s => s.name === 'sub-app');
+    const nestedItems = data.items.filter(i => i.scopeId === nestedScope.id);
+    const subNotes = nestedItems.find(i => i.name === 'sub_app_notes');
+    expect(subNotes).toBeTruthy();
+
+    // Should NOT leak to workspace or global
+    const leakedToWorkspace = data.items.find(i => i.scopeId === workspaceScope.id && i.name === 'sub_app_notes');
+    expect(leakedToWorkspace).toBeUndefined();
+
+    env.cleanup();
+  });
+
+  test('memory files with MEMORY.md are excluded from items', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+
+    const memoryIndex = data.items.find(i => i.category === 'memory' && i.fileName === 'MEMORY.md');
+    expect(memoryIndex).toBeUndefined();
+
+    env.cleanup();
+  });
+});
+
+// ── Context Budget Accuracy ─────────────────────────────────────────
+
+test.describe('Context Budget Accuracy', () => {
+
+  test('context budget tokens are proportional to file sizes', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const workspaceScope = data.scopes.find(s => s.name === 'workspace');
+
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${workspaceScope.id}`);
+    const budget = await budgetRes.json();
+
+    // Every item with content should have tokens > 0
+    for (const item of budget.currentScope.items) {
+      if (item.sizeBytes > 0) {
+        expect(item.tokens).toBeGreaterThan(0);
+      }
+    }
+
+    env.cleanup();
+  });
+
+  test('inherited items do NOT include current scope items', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const workspaceScope = data.scopes.find(s => s.name === 'workspace');
+
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${workspaceScope.id}`);
+    const budget = await budgetRes.json();
+
+    // No inherited item should have the same scopeId as current
+    for (const item of budget.inherited.items) {
+      expect(item.scopeId).not.toBe(workspaceScope.id);
+    }
+
+    env.cleanup();
+  });
+
+  test('inherited items do NOT duplicate each other across scopes', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const nestedScope = data.scopes.find(s => s.name === 'sub-app');
+
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${nestedScope.id}`);
+    const budget = await budgetRes.json();
+
+    // Check no path appears twice in inherited
+    const paths = new Set();
+    const duplicates = [];
+    for (const item of budget.inherited.items) {
+      const key = `${item.category}::${item.path}::${item.name}`;
+      if (paths.has(key)) duplicates.push(key);
+      paths.add(key);
+    }
+    expect(duplicates).toEqual([]);
+
+    env.cleanup();
+  });
+
+  test('total = currentScope + inherited + systemOverhead', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const workspaceScope = data.scopes.find(s => s.name === 'workspace');
+
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${workspaceScope.id}`);
+    const budget = await budgetRes.json();
+
+    const expected = budget.currentScope.total + budget.inherited.total + budget.systemOverhead.total;
+    expect(budget.total).toBe(expected);
+
+    env.cleanup();
+  });
+
+  test('percentUsed is correctly calculated', async () => {
+    const env = await createTestEnv();
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
+    const budget = await budgetRes.json();
+
+    const expectedPct = Math.round((budget.total / budget.contextLimit) * 1000) / 10;
+    expect(budget.percentUsed).toBe(expectedPct);
+
+    env.cleanup();
+  });
+
+  test('sessions and plugins are NOT counted in context budget', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const workspaceScope = data.scopes.find(s => s.name === 'workspace');
+
+    // Workspace has sessions in scan
+    const sessions = data.items.filter(i => i.scopeId === workspaceScope.id && i.category === 'session');
+    expect(sessions.length).toBeGreaterThan(0);
+
+    // But context budget should NOT include them
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${workspaceScope.id}`);
+    const budget = await budgetRes.json();
+
+    const budgetSessions = budget.currentScope.items.filter(i => i.category === 'session');
+    expect(budgetSessions.length).toBe(0);
+
+    const budgetPlugins = budget.currentScope.items.filter(i => i.category === 'plugin');
+    expect(budgetPlugins.length).toBe(0);
+
+    env.cleanup();
+  });
+
+  test('system overhead is always 21K base', async () => {
+    const env = await createTestEnv();
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
+    const budget = await budgetRes.json();
+
+    expect(budget.systemOverhead.base).toBe(21000);
+
+    env.cleanup();
+  });
+
+  test('MCP overhead = server count × 1500', async () => {
+    const env = await createTestEnv();
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
+    const budget = await budgetRes.json();
+
+    expect(budget.systemOverhead.mcpEstimate).toBe(budget.systemOverhead.mcpServers * 1500);
+
+    env.cleanup();
+  });
+
+  test('each inherited item has scopeId and scopeName', async () => {
+    const env = await createTestEnv();
+    const scanRes = await fetch(`${env.baseURL}/api/scan`);
+    const data = await scanRes.json();
+    const nestedScope = data.scopes.find(s => s.name === 'sub-app');
+
+    const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=${nestedScope.id}`);
+    const budget = await budgetRes.json();
+
+    for (const item of budget.inherited.items) {
+      expect(item.scopeId).toBeTruthy();
+      expect(item.scopeName).toBeTruthy();
+      expect(item.scopeId).not.toBe(nestedScope.id);
+    }
 
     env.cleanup();
   });
