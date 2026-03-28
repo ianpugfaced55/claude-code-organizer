@@ -19,7 +19,7 @@
 
 <sub>138 tests E2E | Zero dependencies | Demo grabado por IA con [Pagecast](https://github.com/mcpware/pagecast)</sub>
 
-> 100+ estrellas en 5 dias. Hecho por una persona sin titulo en CS que encontro 140 archivos de configuracion invisibles controlando Claude y decidio que nadie deberia tener que hacer `cat` a cada uno. Primer proyecto open source — gracias a todos los que dieron estrella, probaron y reportaron problemas.
+> 100+ estrellas en 5 dias. Hecho por alguien que dejo la carrera de CS a medias, encontro 140 archivos de configuracion invisibles controlando Claude y decidio que nadie deberia tener que hacer `cat` a cada uno. Primer proyecto open source — gracias a todos los que dieron estrella, probaron y reportaron problemas.
 
 ## El ciclo: Escanear, Encontrar, Arreglar
 

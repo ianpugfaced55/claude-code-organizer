@@ -19,7 +19,7 @@
 
 <sub>138 E2E tests | 零依賴 | Demo 由 AI 透過 [Pagecast](https://github.com/mcpware/pagecast) 錄製</sub>
 
-> 5 天內衝破 100+ stars。我是一個沒有大學學歷的工程師，發現有 140 個隱藏設定檔在控制 Claude 的行為，覺得不應該要一個一個 `cat` 來看，所以做了這個工具。這是我第一個 open source project — 感謝每一個幫忙加星、測試和回報問題的人。
+> 5 天內衝破 100+ stars。一個 CS 讀到一半就休學的人，發現有 140 個隱藏設定檔在控制 Claude 的行為，覺得不應該要一個一個 `cat` 來看，所以做了這個工具。這是我第一個 open source project — 感謝每一個幫忙加星、測試和回報問題的人。
 
 ## 循環：掃描、發現、修復
 

@@ -19,7 +19,7 @@
 
 <sub>138 E2E test | Sıfır dependency | Demo [Pagecast](https://github.com/mcpware/pagecast) kullanılarak AI tarafından kaydedildi</sub>
 
-> 5 günde 100+ star. Bunu, Claude'u kontrol eden 140 görünmez config dosyası bulup "kimse bunları tek tek `cat`'lemek zorunda kalmasın" diyen, üniversite terk bir dev geliştirdi. İlk open source proje — star'layan, test eden ve issue açan herkese teşekkürler.
+> 5 günde 100+ star. Bunu, Claude'u kontrol eden 140 görünmez config dosyası bulup "kimse bunları tek tek `cat`'lemek zorunda kalmasın" diyen, CS bölümünü yarıda bırakan bir dev geliştirdi. İlk open source proje — star'layan, test eden ve issue açan herkese teşekkürler.
 
 ## Döngü: Tara, Bul, Düzelt
 
