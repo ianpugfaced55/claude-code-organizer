@@ -64,34 +64,32 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 | Zero-install (`npx`) | **Yes** | Varies | No (Tauri/Electron) | No (VS Code) |
 | MCP tools (AI-accessible) | **Yes** | No | No | No |
 
-## See What Claude Actually Loads
-
-Claude Code has three invisible scope levels: **Global → Workspace → Project**. Everything in Global loads into every session. After two weeks of use, you have 100+ items scattered across encoded-path directories you've never seen.
-
-CCO shows the full inheritance tree. Click any project to see its own items plus everything inherited from parent scopes.
-
-![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
-
-Teams installed twice, Gmail three times, Playwright three times. You configured them in one scope, Claude reinstalled them in another.
-
-- **Move anything with drag-and-drop** — Drag a skill from Project to Global. One gesture. All your projects can now use it.
-- **Find duplicates instantly** — All items grouped by category across scopes. Duplicates jump out immediately.
-- **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
-- **Bulk operations** — Select mode: tick multiple items, move or delete all at once.
-
 ## Know What's Eating Your Context
 
-Your context window is not 200K tokens. It's 200K minus everything Claude pre-loads.
+Your context window is not 200K tokens. It's 200K minus everything Claude pre-loads — and duplicates make it worse.
 
 ![Context Budget](docs/cptoken.png)
 
 **~25K tokens always loaded (12.5% of 200K), up to ~121K deferred.** About 72% of your context window left before you type — and shrinks as Claude loads MCP tools during the session.
 
+![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams installed twice, Gmail three times, Playwright three times. You configured them in one scope, Claude reinstalled them in another. Each duplicate eats tokens independently.
+
 - Per-item token counts (ai-tokenizer ~99.8% accuracy)
 - Always-loaded vs deferred breakdown
 - @import expansion (sees what CLAUDE.md actually pulls in)
 - 200K / 1M context window toggle
-- Inherited scope breakdown
+- Inherited scope breakdown — see exactly what parent scopes contribute
+
+## Keep Your Scopes Clean
+
+Claude Code has three invisible scope levels: **Global → Workspace → Project**. Everything in Global loads into every session. Claude doesn't care about scope when it creates things — a Python skill ends up in Global, loading into every React project.
+
+- **Move anything with drag-and-drop** — Drag a skill from Project to Global. One gesture. All your projects can now use it.
+- **Find duplicates instantly** — All items grouped by category across scopes. Duplicates jump out immediately.
+- **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
+- **Bulk operations** — Select mode: tick multiple items, move or delete all at once.
 
 ## Catch Poisoned Tools Before They Catch You
 
