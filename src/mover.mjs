@@ -445,7 +445,6 @@ export function getValidDestinations(item, scopes) {
         case "skill":
         case "command":
         case "agent":
-        case "rule":
           // File-based items: global is always valid; project scopes are valid only if
           // their .claude dir is distinct from global's ~/.claude (avoids silent overlap).
           return s.id === "global" || (s.repoDir && !sharesGlobalClaudeDir(s));

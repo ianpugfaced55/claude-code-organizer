@@ -1896,6 +1896,13 @@ function showDragConfirm(item, fromScope, toScope) {
       </div>
     </div>`;
 
+  // Add move warning if applicable (same logic as move modal)
+  const warning = getMoveWarning(item);
+  const previewEl = document.getElementById("dcPreview");
+  if (warning && previewEl) {
+    previewEl.innerHTML += `<div class="move-warning" style="margin-top:10px;">${esc(warning)}</div>`;
+  }
+
   document.getElementById("dragConfirmModal").classList.remove("hidden");
 }
 

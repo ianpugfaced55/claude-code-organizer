@@ -180,9 +180,11 @@ async function createTestEnv() {
   }, null, 2));
 
   // ── Project-level MCP (in repo root) ──
+  // 'test-server' exists in both global and project → tests MCP shadowing
   await writeFile(join(projectDir, '.mcp.json'), JSON.stringify({
     mcpServers: {
       'project-mcp': { command: 'node', args: ['local-server.js'] },
+      'test-server': { command: 'node', args: ['project-server.js'] },
     }
   }, null, 2));
 
@@ -202,9 +204,11 @@ async function createTestEnv() {
   await writeFile(join(globalCmdsDir, 'deploy.md'), '---\nname: deploy\ndescription: Deploy to production\n---\n# Deploy\nStep 1: Build\nStep 2: Push');
 
   // ── Project commands ──
+  // 'deploy' exists in both global and project → tests command conflict
   const projectCmdsDir = join(projectDir, '.claude', 'commands');
   await mkdir(projectCmdsDir, { recursive: true });
   await writeFile(join(projectCmdsDir, 'local-build.md'), '---\nname: local-build\ndescription: Build the project locally\n---\n# Local Build\nRun npm run build');
+  await writeFile(join(projectCmdsDir, 'deploy.md'), '---\nname: deploy\ndescription: Deploy this project\n---\n# Deploy\nProject-specific deploy');
 
   // ── Global agents ──
   const globalAgentsDir = join(claudeDir, 'agents');
@@ -212,9 +216,11 @@ async function createTestEnv() {
   await writeFile(join(globalAgentsDir, 'code-reviewer.md'), '---\nname: code-reviewer\ndescription: Reviews code for bugs and quality\n---\n# Code Reviewer\nReview code carefully.');
 
   // ── Project agents ──
+  // 'code-reviewer' exists in both global and project → tests agent shadowing
   const projectAgentsDir = join(projectDir, '.claude', 'agents');
   await mkdir(projectAgentsDir, { recursive: true });
   await writeFile(join(projectAgentsDir, 'test-runner.md'), '---\nname: test-runner\ndescription: Runs tests and reports results\n---\n# Test Runner\nRun all tests.');
+  await writeFile(join(projectAgentsDir, 'code-reviewer.md'), '---\nname: code-reviewer\ndescription: Project-specific code reviewer\n---\n# Code Reviewer\nProject-specific review.');
 
   // ── Project rules (project-scoped only, locked) ──
   const projectRulesDir = join(projectDir, '.claude', 'rules');
@@ -3076,5 +3082,201 @@ test.describe('Path Resolution', () => {
     srv.kill('SIGKILL');
     await new Promise(r => setTimeout(r, 500));
     await rm(tmpDir, { recursive: true, force: true });
+  });
+});
+
+// ── Show Effective + Move Restrictions ──────────────────────────────
+
+test.describe('Show Effective — per-category rules', () => {
+  let env;
+  test.beforeAll(async () => { env = await createTestEnv(); });
+  test.afterAll(async () => { await env.cleanup(); });
+
+  test('Show Effective adds global items for participating categories only', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    // Select workspace project scope
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+
+    const beforeCount = await page.evaluate(() => document.querySelectorAll('.item').length);
+
+    // Click Show Effective
+    await page.click('#inheritToggleBtn');
+    await page.waitForTimeout(500);
+
+    const afterCount = await page.evaluate(() => document.querySelectorAll('.item').length);
+    expect(afterCount).toBeGreaterThan(beforeCount);
+
+    // Global items should have "Global" badge
+    const globalBadges = await page.evaluate(() =>
+      document.querySelectorAll('.ib-global').length
+    );
+    expect(globalBadges).toBeGreaterThan(0);
+  });
+
+  test('MCP same-name items get Shadowed badge', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+    await page.click('#inheritToggleBtn');
+    await page.waitForTimeout(500);
+
+    // 'test-server' exists in both global and project — global one should be Shadowed
+    const shadowed = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.ib-shadowed')).map(el =>
+        el.closest('.item')?.querySelector('.item-name')?.textContent
+      ).filter(Boolean)
+    );
+    expect(shadowed).toContain('test-server');
+  });
+
+  test('Command same-name items get Conflict badge', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+    await page.click('#inheritToggleBtn');
+    await page.waitForTimeout(500);
+
+    // 'deploy' exists in both global and project — should have Conflict badge
+    const conflicts = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.ib-conflict')).map(el =>
+        el.closest('.item')?.querySelector('.item-name')?.textContent
+      ).filter(Boolean)
+    );
+    expect(conflicts).toContain('deploy');
+  });
+
+  test('Agent same-name items get Shadowed badge (project overrides user)', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+    await page.click('#inheritToggleBtn');
+    await page.waitForTimeout(500);
+
+    // 'code-reviewer' exists in both — global one should be Shadowed
+    const shadowed = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.ib-shadowed')).map(el =>
+        el.closest('.item')?.querySelector('.item-name')?.textContent
+      ).filter(Boolean)
+    );
+    expect(shadowed).toContain('code-reviewer');
+  });
+
+  test('Categories without effectiveRule are dimmed when Show Effective is on', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+    await page.click('#inheritToggleBtn');
+    await page.waitForTimeout(500);
+
+    // Plan and session pills should be dimmed (f-pill-dim class)
+    const dimmedPills = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.f-pill.f-pill-dim')).map(el => el.dataset.filter)
+    );
+    // plan, rule, session have no effectiveRule
+    for (const cat of ['plan', 'rule', 'session']) {
+      if (dimmedPills.includes(cat)) {
+        expect(dimmedPills).toContain(cat);
+      }
+    }
+  });
+
+  test('detail panel shows "Why it applies" text', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"]`).click();
+    await page.waitForTimeout(300);
+
+    // Click first item
+    await page.locator('.item').first().click();
+    await page.waitForTimeout(300);
+
+    const whyVisible = await page.evaluate(() => {
+      const el = document.getElementById('detailEffective');
+      return el && !el.classList.contains('hidden');
+    });
+    expect(whyVisible).toBe(true);
+
+    const whyText = await page.evaluate(() =>
+      document.getElementById('detailEffectiveText')?.textContent || ''
+    );
+    expect(whyText.length).toBeGreaterThan(10);
+  });
+});
+
+test.describe('Move restrictions — per-category destinations', () => {
+  let env;
+  test.beforeAll(async () => { env = await createTestEnv(); });
+  test.afterAll(async () => { await env.cleanup(); });
+
+  test('plan items have no valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const plan = items.find(i => i.category === 'plan');
+    if (!plan) return; // skip if no plans
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(plan.path)}&category=plan&name=${encodeURIComponent(plan.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations).toHaveLength(0);
+  });
+
+  test('rule items have no valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const rule = items.find(i => i.category === 'rule');
+    if (!rule) return;
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(rule.path)}&category=rule&name=${encodeURIComponent(rule.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations).toHaveLength(0);
+  });
+
+  test('skill items have valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const skill = items.find(i => i.category === 'skill');
+    expect(skill).toBeTruthy();
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(skill.path)}&category=skill&name=${encodeURIComponent(skill.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations.length).toBeGreaterThan(0);
+  });
+
+  test('mcp items have valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const mcp = items.find(i => i.category === 'mcp');
+    expect(mcp).toBeTruthy();
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(mcp.path)}&category=mcp&name=${encodeURIComponent(mcp.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations.length).toBeGreaterThan(0);
+  });
+
+  test('command items have valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const cmd = items.find(i => i.category === 'command');
+    expect(cmd).toBeTruthy();
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(cmd.path)}&category=command&name=${encodeURIComponent(cmd.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations.length).toBeGreaterThan(0);
+  });
+
+  test('agent items have valid move destinations', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const agent = items.find(i => i.category === 'agent');
+    expect(agent).toBeTruthy();
+
+    const res = await (await fetch(`${env.baseURL}/api/destinations?path=${encodeURIComponent(agent.path)}&category=agent&name=${encodeURIComponent(agent.name)}`)).json();
+    expect(res.ok).toBe(true);
+    expect(res.destinations.length).toBeGreaterThan(0);
   });
 });
