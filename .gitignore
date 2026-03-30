@@ -33,3 +33,5 @@ datasets/mcp_tool_poisoning_attacks/
 datasets/MCPTox-Benchmark/
 datasets/mcp-vulnerabilities/
 datasets/prompt-injection-datasets/
+
+research/datasets/MCPTox-Benchmark/

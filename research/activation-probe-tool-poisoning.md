@@ -161,11 +161,11 @@ I've done everything I can with public tools and open-source models. The next st
 ## Reproducibility
 
 The main experiments (Rounds 1-5b) are reproducible from this repo:
-- **Notebook:** `research/reproduce-experiments.ipynb` — covers Experiments 1-5b end to end
-- **Datasets:** `datasets/` (with README explaining each file)
+- **Notebook:** [`research/reproduce-experiments.ipynb`](https://github.com/mcpware/claude-code-organizer/blob/main/research/reproduce-experiments.ipynb) — covers Experiments 1-5b end to end
+- **Datasets:** `research/datasets/` (with README explaining each file)
 - **Scanner benchmark:** `benchmark-mcptox.mjs`
 - **Random seed:** 42 everywhere
-- **Control experiments** (cross-style generalization, reassurance confound, neutral pairs) were run in separate sessions and are documented in the report but not yet integrated into the notebook. The control datasets are included in `datasets/`.
+- **Control experiments** (cross-style generalization, reassurance confound, neutral pairs) were run in separate sessions and are documented in the report but not yet integrated into the notebook. The control datasets are included in `research/datasets/`.
 
 I used Claude Code to accelerate the implementation. The research questions, experiment design, and what I make of the results are mine.
 
