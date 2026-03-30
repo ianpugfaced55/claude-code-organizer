@@ -13,7 +13,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 **One dashboard to see everything Claude Code loads into context — scan for poisoned MCP servers, reclaim wasted tokens, and fix wrong-scope configs. All without leaving the window.**
 
-> **Privacy:** CCO reads your local `~/.claude/` directory only. No API keys accessed, no conversation content read, no data sent externally. Zero telemetry.
+> **Privacy:** CCO reads Claude Code config files on your machine (global and project-level). Nothing is sent externally. Zero telemetry.
 
 ![Claude Code Organizer Demo](docs/demo.gif)
 
@@ -35,7 +35,7 @@ Every time you use Claude Code, three things happen silently:
 
 Other tools solve these one at a time. **CCO solves them in one loop:**
 
-**Scan** → See every memory, skill, MCP server, rule, command, agent, hook, plugin, plan, and session. All scopes. One tree.
+**Scan** → See every memory, skill, MCP server, rule, command, agent, hook, plugin, plan, and session. Global and every project scope. One view.
 
 **Find** → Spot duplicates and wrong-scope items. Context Budget shows what's eating your tokens. Security Scanner shows what's poisoning your tools.
 
@@ -43,9 +43,9 @@ Other tools solve these one at a time. **CCO solves them in one loop:**
 
 ![Scan, Find, Fix — all in one dashboard](docs/3panel.png)
 
-<sub>Four panels working together: scope tree, MCP server list with security badges, detail inspector, and security scan findings — click any finding to navigate directly to the server</sub>
+<sub>Four panels working together: scope list, MCP server list with security badges, detail inspector, and security scan findings — click any finding to navigate directly to the server</sub>
 
-**The difference from standalone scanners:** When CCO finds something, you click the finding and land on the MCP server entry in the scope tree. Delete it, move it, or inspect its config — without switching tools.
+**The difference from standalone scanners:** When CCO finds something, you click the finding and land on the MCP server entry. Delete it, move it, or inspect its config — without switching tools.
 
 **Get started — paste this into Claude Code:**
 
@@ -86,20 +86,20 @@ Your context window is not 200K tokens. It's 200K minus everything Claude pre-lo
 
 ## Keep Your Scopes Clean
 
-Claude Code organizes everything into two scope levels:
+CCO presents a simplified Global / Project view of your Claude Code config:
 
 ```
 Global                    ← loads into EVERY session on your machine
   └─ Project              ← loads only when you're in this directory
 ```
 
-Projects inherit from Global only. Sibling projects do not inherit from each other — filesystem nesting does not create extra inheritance layers. CCO may group projects by path for navigation, but Claude Code scope inheritance is always Global → Project only.
+Projects inherit from Global only. Sibling projects do not inherit from each other — filesystem nesting does not create extra inheritance layers.
 
 Here's the problem: **Claude creates memories and skills in whatever directory you're currently in.** You tell Claude "always use ESM imports" while working in `~/myapp` — that memory is trapped in that project scope. Open a different project, Claude doesn't know it. You tell it again. Now you have the same memory in two places, both eating context tokens.
 
 Same with skills. You build a deploy skill in your backend repo — it lands in that project's scope. Your other projects can't see it. You end up recreating it everywhere.
 
-**CCO shows the full scope tree.** You can see exactly which memories, skills, and MCP servers affect which projects — then drag them to the right scope.
+**CCO shows every scope in one view.** You can see exactly which memories, skills, and MCP servers affect which projects — then drag them to the right scope.
 
 ![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
 
@@ -144,7 +144,7 @@ CCO connects to every MCP server, retrieves actual tool definitions, and runs th
 
 1. **Scans** `~/.claude/` — discovers all 11 categories across every scope
 2. **Resolves project scopes** — scans projects from filesystem paths, maps them to Claude Code's Global/Project scope model
-3. **Renders a three-panel dashboard** — scope tree, category items, detail panel with content preview
+3. **Renders a dashboard** — scope list, category items, detail panel with content preview
 
 ## Platform Support
 
