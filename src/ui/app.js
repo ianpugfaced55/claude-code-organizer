@@ -914,10 +914,10 @@ function renderItem(item) {
   const isFromAncestor = showEffective && effectiveAncestorKeys.has(key);
   const isShadowed     = isFromGlobal && effectiveShadowedKeys.has(key);
   const isConflict     = showEffective && effectiveConflictKeys.has(key);
-  const effectiveBadge = isShadowed     ? `<span class="item-badge ib-shadowed">Shadowed</span>`
-                       : isConflict     ? `<span class="item-badge ib-conflict">Conflict</span>`
-                       : isFromAncestor ? `<span class="item-badge ib-ancestor">Ancestor</span>`
-                       : isFromGlobal   ? `<span class="item-badge ib-global">Global</span>`
+  const effectiveBadge = isShadowed     ? `<span class="scope-tag st-shadowed">Shadowed</span>`
+                       : isConflict     ? `<span class="scope-tag st-conflict">⚠ Conflict</span>`
+                       : isFromAncestor ? `<span class="scope-tag st-ancestor">Ancestor</span>`
+                       : isFromGlobal   ? `<span class="scope-tag st-global">Global</span>`
                        : "";
   const actions = (item.locked || isFromGlobal) ? "" : `
     <span class="item-actions">
