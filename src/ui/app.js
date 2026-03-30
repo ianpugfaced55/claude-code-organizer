@@ -10,7 +10,11 @@ let data = null;
 let activeFilters = new Set();
 let selectedItem = null;
 let selectedScopeId = null;
-let showInherited = false;
+let showEffective = false;
+// Keys of global items that are shadowed by a project item with the same name
+let effectiveShadowedKeys = new Set();
+// Keys of items that have a same-name conflict (commands: not reliably overridable)
+let effectiveConflictKeys = new Set();
 let pendingDrag = null;
 let pendingDelete = null;
 let draggingItem = null;
@@ -30,17 +34,28 @@ const uiState = {
 const CATEGORY_ORDER = ["skill", "memory", "mcp", "command", "agent", "plan", "rule", "config", "hook", "plugin", "session"];
 
 const CATEGORIES = {
-  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory" },
-  skill: { icon: "⚡", label: "Skills", filterLabel: "Skills", group: "skill" },
-  session: { icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null },
-  mcp: { icon: "🔌", label: "MCP Servers", filterLabel: "MCP", group: "mcp" },
-  command: { icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command" },
-  agent: { icon: "🤖", label: "Agents", filterLabel: "Agents", group: "agent" },
-  plan: { icon: "📐", label: "Plans", filterLabel: "Plans", group: "plan" },
-  rule: { icon: "📏", label: "Rules", filterLabel: "Rules", group: null },
-  config: { icon: "⚙️", label: "Config", filterLabel: "Config", group: null },
-  hook: { icon: "🪝", label: "Hooks", filterLabel: "Hooks", group: null },
-  plugin: { icon: "🧩", label: "Plugins", filterLabel: "Plugins", group: null },
+  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory",
+    effectiveRule: null }, // ancestry requires runtime cwd — not computed
+  skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill",
+    effectiveRule: "Available from Personal (~/.claude/skills), Project (.claude/skills), and installed Plugins" },
+  session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null,
+    effectiveRule: null }, // project-only, no inheritance
+  mcp:    { icon: "🔌", label: "MCP Servers", filterLabel: "MCP",  group: "mcp",
+    effectiveRule: "Resolved by local > project > user — same-name servers use the narrower scope" },
+  command:{ icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command",
+    effectiveRule: "Available from User and Project — same-name conflicts are not supported" },
+  agent:  { icon: "🤖", label: "Agents",   filterLabel: "Agents",  group: "agent",
+    effectiveRule: "Project-level agents override same-name User agents" },
+  plan:   { icon: "📐", label: "Plans",    filterLabel: "Plans",   group: "plan",
+    effectiveRule: null }, // no clear official scope rule
+  rule:   { icon: "📏", label: "Rules",    filterLabel: "Rules",   group: null,
+    effectiveRule: null }, // no clear official scope rule
+  config: { icon: "⚙️", label: "Config",   filterLabel: "Config",  group: null,
+    effectiveRule: "Resolved by precedence: managed > CLI > project local > project shared > user" },
+  hook:   { icon: "🪝", label: "Hooks",    filterLabel: "Hooks",   group: null,
+    effectiveRule: "Configured in settings files — resolved by settings precedence" },
+  plugin: { icon: "🧩", label: "Plugins",  filterLabel: "Plugins", group: null,
+    effectiveRule: null }, // global-only, no inheritance rule
 };
 
 const ITEM_ICONS = {
@@ -221,7 +236,7 @@ function setupSidebarTree() {
     const hdr = event.target.closest(".s-scope-hdr");
     if (!hdr) return;
     selectedScopeId = hdr.dataset.scopeId;
-    showInherited = false;
+    showEffective = false; effectiveShadowedKeys = new Set(); effectiveConflictKeys = new Set();
     expandScopePath(selectedScopeId);
     if (isContextBudgetOpen()) {
       openContextBudget(selectedScopeId);
@@ -622,12 +637,14 @@ function renderContentHeader() {
 
 function renderPills() {
   const container = document.getElementById("pills");
-  // Count items for the currently selected scope, plus Global if showInherited
+  // Count items for the currently selected scope, plus Global effective items if showEffective
   let scopeItems = selectedScopeId
     ? (data?.items || []).filter((i) => i.scopeId === selectedScopeId)
     : data?.items || [];
-  if (showInherited && selectedScopeId && selectedScopeId !== "global") {
-    const globalItems = (data?.items || []).filter((i) => i.scopeId === "global");
+  if (showEffective && selectedScopeId && selectedScopeId !== "global") {
+    const globalItems = (data?.items || []).filter(
+      (i) => i.scopeId === "global" && Boolean(CATEGORIES[i.category]?.effectiveRule)
+    );
     scopeItems = [...scopeItems, ...globalItems];
   }
   const scopeCounts = {};
@@ -636,15 +653,20 @@ function renderPills() {
     scopeCounts[item.category] = (scopeCounts[item.category] || 0) + 1;
     scopeTotal++;
   }
+
+  const NO_RULE_TIP = "No official scope rule — shown as inventory only";
   const pills = [
-    { key: "all", label: "All", icon: "◌", count: scopeTotal },
+    { key: "all", label: "All", icon: "◌", count: scopeTotal, tip: null },
     ...CATEGORY_ORDER.map((category) => {
       const config = CATEGORIES[category] || { icon: "📄", filterLabel: capitalize(category) };
+      const hasRule = Boolean(config.effectiveRule);
       return {
         key: category,
         label: config.filterLabel,
         icon: config.icon,
         count: scopeCounts[category] || 0,
+        tip: config.effectiveRule || (showEffective ? NO_RULE_TIP : null),
+        noRule: showEffective && !hasRule,
       };
     }),
   ];
@@ -657,8 +679,10 @@ function renderPills() {
   container.innerHTML = `
     ${visiblePills.map((pill) => {
       const isActive = pill.key === "all" ? allActive : activeFilters.has(pill.key);
+      const dimmed = pill.noRule ? " f-pill-dim" : "";
+      const titleAttr = pill.tip ? ` title="${esc(pill.tip)}"` : "";
       return `
-        <button type="button" class="f-pill${isActive ? " active" : ""}" data-filter="${pill.key}">
+        <button type="button" class="f-pill${isActive ? " active" : ""}${dimmed}" data-filter="${pill.key}"${titleAttr}>
           <span class="f-pill-ico">${pill.icon}</span>
           ${esc(pill.label)}
           <b>${pill.count}</b>
@@ -797,9 +821,15 @@ function renderItem(item) {
   const sizeLabel = item.size || "—";
   const desc = item.description || item.fileName || item.path || "No description";
 
-  const isInherited = showInherited && item.scopeId === "global" && selectedScopeId !== "global";
-  const inheritedBadge = isInherited ? `<span class="item-badge ib-global">Global</span>` : "";
-  const actions = (item.locked || isInherited) ? "" : `
+  // Effective-mode status badges
+  const isFromGlobal = showEffective && item.scopeId === "global" && selectedScopeId !== "global";
+  const isShadowed  = isFromGlobal && effectiveShadowedKeys.has(key);
+  const isConflict  = showEffective && effectiveConflictKeys.has(key);
+  const effectiveBadge = isShadowed  ? `<span class="item-badge ib-shadowed">Shadowed</span>`
+                       : isConflict  ? `<span class="item-badge ib-conflict">Conflict</span>`
+                       : isFromGlobal ? `<span class="item-badge ib-global">Global</span>`
+                       : "";
+  const actions = (item.locked || isFromGlobal) ? "" : `
     <span class="item-actions">
       ${(canMoveItem(item) || item.locked) ? `<button type="button" class="act-btn act-move" data-action="move">Move</button>` : ""}
       <button type="button" class="act-btn act-open" data-action="open">Open</button>
@@ -829,7 +859,7 @@ function renderItem(item) {
       <span class="item-ico">${icon}</span>
       <span class="item-name">${esc(item.name)}</span>
       ${secBadgeHtml}${blFlagHtml}
-      ${inheritedBadge}${badgeHtml}
+      ${effectiveBadge}${badgeHtml}
       <span class="item-desc">${item.category === "mcp" ? "" : esc(desc)}</span>
       ${item.category === "mcp" ? "" : `<div class="item-right">
         <span class="item-size">${esc(sizeLabel)}</span>
@@ -1046,8 +1076,9 @@ function setupContextBudget() {
   document.getElementById("inheritToggleBtn")?.addEventListener("click", () => {
     const scope = getScopeById(selectedScopeId);
     if (!scope || scope.id === "global") return;
-    showInherited = !showInherited;
-    document.getElementById("inheritToggleBtn").classList.toggle("active", showInherited);
+    showEffective = !showEffective;
+    computeEffectiveSets(selectedScopeId);
+    document.getElementById("inheritToggleBtn").classList.toggle("active", showEffective);
     renderAll();
   });
 }
@@ -2255,10 +2286,49 @@ function findVisibleScopeInTree(scope) {
   return scope.id;
 }
 
+/**
+ * Pre-compute which global items are shadowed (MCP, agents: project wins same-name)
+ * and which items have unresolvable name conflicts (commands).
+ * Called whenever showEffective toggles or scope changes.
+ */
+function computeEffectiveSets(scopeId) {
+  effectiveShadowedKeys = new Set();
+  effectiveConflictKeys = new Set();
+  if (!showEffective || !scopeId || scopeId === "global") return;
+
+  const projectItems = getItemsForScope(scopeId);
+  const globalItems  = getItemsForScope("global");
+
+  // MCP & Agents: narrower scope (project) wins same-name
+  for (const cat of ["mcp", "agent"]) {
+    const projectNames = new Set(
+      projectItems.filter(i => i.category === cat).map(i => i.name)
+    );
+    for (const gi of globalItems.filter(i => i.category === cat)) {
+      if (projectNames.has(gi.name)) effectiveShadowedKeys.add(itemKey(gi));
+    }
+  }
+
+  // Commands: both levels available but same-name conflicts are officially unsupported
+  const projCmdNames   = new Set(projectItems.filter(i => i.category === "command").map(i => i.name));
+  const globalCmdNames = new Set(globalItems.filter(i => i.category === "command").map(i => i.name));
+  for (const name of projCmdNames) {
+    if (!globalCmdNames.has(name)) continue;
+    for (const i of [...projectItems, ...globalItems].filter(i => i.category === "command" && i.name === name)) {
+      effectiveConflictKeys.add(itemKey(i));
+    }
+  }
+}
+
 function getVisibleItemsForScope(scopeId) {
   const ownItems = getItemsForScope(scopeId).filter((item) => itemVisibleInMain(item));
-  if (!showInherited || scopeId === "global") return ownItems;
-  const globalItems = getItemsForScope("global").filter((item) => itemMatchesFilters(item) && itemMatchesSearch(item));
+  if (!showEffective || scopeId === "global") return ownItems;
+
+  // Only add global items for categories that have an official effective rule
+  const globalItems = getItemsForScope("global").filter((item) => {
+    if (!itemMatchesFilters(item) || !itemMatchesSearch(item)) return false;
+    return Boolean(CATEGORIES[item.category]?.effectiveRule);
+  });
   return [...ownItems, ...globalItems];
 }
 
