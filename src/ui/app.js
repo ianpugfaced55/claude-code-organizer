@@ -11,10 +11,13 @@ let activeFilters = new Set();
 let selectedItem = null;
 let selectedScopeId = null;
 let showEffective = false;
+let treeView = false;
 // Keys of global items that are shadowed by a project item with the same name
 let effectiveShadowedKeys = new Set();
 // Keys of items that have a same-name conflict (commands: not reliably overridable)
 let effectiveConflictKeys = new Set();
+// Keys of items from ancestor scopes (path-based; relevant for CLAUDE.md ancestry)
+let effectiveAncestorKeys = new Set();
 let pendingDrag = null;
 let pendingDelete = null;
 let draggingItem = null;
@@ -35,7 +38,7 @@ const CATEGORY_ORDER = ["skill", "memory", "mcp", "command", "agent", "plan", "r
 
 const CATEGORIES = {
   memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory",
-    effectiveRule: null }, // ancestry requires runtime cwd — not computed
+    effectiveRule: "Global memories are available in all projects; project memories are specific to this project" },
   skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill",
     effectiveRule: "Available from Personal (~/.claude/skills), Project (.claude/skills), and installed Plugins" },
   session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null,
@@ -169,7 +172,7 @@ function setupScopeNotice() {
   if (!tree) return;
   const notice = document.createElement("div");
   notice.className = "scope-notice";
-  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Claude Code has two scopes — <strong>Global</strong> and <strong>Project</strong>. Every project inherits directly from Global only. Sibling or nested projects do not inherit from each other.`;
+  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Different categories have different inheritance rules. Use <strong>✦ Show Effective</strong> to see what actually applies in each project. Hover any category pill for its specific rule.`;
   tree.parentElement.insertBefore(notice, tree);
   document.getElementById("scopeNoticeDismiss").addEventListener("click", () => {
     localStorage.setItem(NOTICE_KEY, "1");
@@ -236,7 +239,8 @@ function setupSidebarTree() {
     const hdr = event.target.closest(".s-scope-hdr");
     if (!hdr) return;
     selectedScopeId = hdr.dataset.scopeId;
-    showEffective = false; effectiveShadowedKeys = new Set(); effectiveConflictKeys = new Set();
+    showEffective = false; effectiveShadowedKeys = new Set(); effectiveConflictKeys = new Set(); effectiveAncestorKeys = new Set();
+    document.getElementById("inheritToggleBtn")?.classList.remove("active");
     expandScopePath(selectedScopeId);
     if (isContextBudgetOpen()) {
       openContextBudget(selectedScopeId);
@@ -447,18 +451,26 @@ function setupCollapseAll() {
   const button = document.getElementById("collapseAllBtn");
   button.addEventListener("click", () => {
     if (uiState._dragCollapsed) {
-      // Restore full view
       uiState._dragCollapsed = false;
       button.title = "Collapse to tree";
       button.textContent = "▤";
     } else {
-      // Collapse: show scope tree only, hide category sub-items
       uiState._dragCollapsed = true;
       button.title = "Expand all";
       button.textContent = "▦";
     }
     renderSidebar();
   });
+
+  const treeBtn = document.getElementById("treeViewBtn");
+  if (treeBtn) {
+    treeBtn.addEventListener("click", () => {
+      treeView = !treeView;
+      treeBtn.classList.toggle("active", treeView);
+      treeBtn.title = treeView ? "Switch to flat view" : "Switch to tree view (shows filesystem structure)";
+      renderSidebar();
+    });
+  }
 }
 
 function updateThemeButton() {
@@ -552,14 +564,61 @@ function renderSidebar() {
     return;
   }
 
-  tree.innerHTML = rootScopes.map((scope) => renderSidebarScope(scope)).join("");
+  if (treeView) {
+    // Tree mode: group project scopes by path ancestry for visual hierarchy
+    // This reflects filesystem structure only — not a universal scope inheritance model
+    tree.innerHTML = rootScopes.map((scope) => renderSidebarScopeTree(scope)).join("");
+  } else {
+    tree.innerHTML = rootScopes.map((scope) => renderSidebarScope(scope)).join("");
+  }
 }
 
-function renderSidebarScope(scope) {
-  const childHtml = getChildScopes(scope.id)
-    .filter((child) => scopeVisibleInSidebar(child))
-    .map((child) => renderSidebarScope(child))
-    .join("");
+/**
+ * Tree view renderer: computes display-only parent-child relationships from
+ * filesystem paths. This is a visual grouping only — effective behavior
+ * depends on each category's own official rules, not this tree.
+ */
+function renderSidebarScopeTree(scope) {
+  if (scope.id === "global") {
+    // Under global, render path-nested projects
+    const allProjects = (data?.scopes || []).filter(s => s.id !== "global" && scopeVisibleInSidebar(s));
+    // Sort by path depth then name
+    allProjects.sort((a, b) => {
+      const da = (a.repoDir || "").split("/").length;
+      const db = (b.repoDir || "").split("/").length;
+      if (da !== db) return da - db;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    // Find top-level projects (no other project is their path ancestor)
+    const topLevel = allProjects.filter(s =>
+      !allProjects.some(other => other.id !== s.id && s.repoDir && other.repoDir && s.repoDir.startsWith(other.repoDir + "/"))
+    );
+    const childHtml = topLevel.filter(s => scopeVisibleInSidebar(s)).map(s => renderSidebarScopeTree(s)).join("");
+    return renderSidebarScope(scope, childHtml);
+  }
+
+  // For project scopes in tree mode: find children by path prefix
+  const children = (data?.scopes || []).filter(s =>
+    s.id !== scope.id && s.id !== "global" && s.repoDir && scope.repoDir &&
+    s.repoDir.startsWith(scope.repoDir + "/") &&
+    // direct child only: no intermediate scope
+    !(data?.scopes || []).some(mid =>
+      mid.id !== s.id && mid.id !== scope.id && mid.id !== "global" &&
+      mid.repoDir && s.repoDir.startsWith(mid.repoDir + "/") &&
+      mid.repoDir.startsWith(scope.repoDir + "/")
+    )
+  ).filter(c => scopeVisibleInSidebar(c));
+
+  const childHtml = children.map(c => renderSidebarScopeTree(c)).join("");
+  return renderSidebarScope(scope, childHtml);
+}
+
+function renderSidebarScope(scope, overrideChildHtml) {
+  const childHtml = overrideChildHtml !== undefined ? overrideChildHtml
+    : getChildScopes(scope.id)
+      .filter((child) => scopeVisibleInSidebar(child))
+      .map((child) => renderSidebarScope(child))
+      .join("");
 
   const categoryRows = getSidebarCategoryCounts(scope.id)
     .map(({ category, count }) => {
@@ -618,21 +677,9 @@ function renderContentHeader() {
   title.textContent = scope.name;
   tag.textContent = scope.type;
 
-  const chain = getScopeChain(scope);
-  if (chain.length === 0) {
-    inherit.innerHTML = "";
-    inherit.style.display = "none";
-    return;
-  }
-
-  inherit.style.display = "";
-  inherit.innerHTML = `
-    <span class="c-inherit-label">inherits from</span>
-    ${chain.map((entry, index) => {
-      const icon = SCOPE_ICONS[entry.type] || "📂";
-      const sep = index === chain.length - 1 ? "" : `<span class="c-inherit-sep">›</span>`;
-      return `<span class="c-inherit-pill">${icon} ${esc(entry.name)}</span>${sep}`;
-    }).join("")}`;
+  // No longer show "inherits from Global" — each category has its own rules
+  inherit.innerHTML = "";
+  inherit.style.display = "none";
 }
 
 function renderPills() {
@@ -822,12 +869,14 @@ function renderItem(item) {
   const desc = item.description || item.fileName || item.path || "No description";
 
   // Effective-mode status badges
-  const isFromGlobal = showEffective && item.scopeId === "global" && selectedScopeId !== "global";
-  const isShadowed  = isFromGlobal && effectiveShadowedKeys.has(key);
-  const isConflict  = showEffective && effectiveConflictKeys.has(key);
-  const effectiveBadge = isShadowed  ? `<span class="item-badge ib-shadowed">Shadowed</span>`
-                       : isConflict  ? `<span class="item-badge ib-conflict">Conflict</span>`
-                       : isFromGlobal ? `<span class="item-badge ib-global">Global</span>`
+  const isFromGlobal   = showEffective && item.scopeId === "global" && selectedScopeId !== "global";
+  const isFromAncestor = showEffective && effectiveAncestorKeys.has(key);
+  const isShadowed     = isFromGlobal && effectiveShadowedKeys.has(key);
+  const isConflict     = showEffective && effectiveConflictKeys.has(key);
+  const effectiveBadge = isShadowed     ? `<span class="item-badge ib-shadowed">Shadowed</span>`
+                       : isConflict     ? `<span class="item-badge ib-conflict">Conflict</span>`
+                       : isFromAncestor ? `<span class="item-badge ib-ancestor">Ancestor</span>`
+                       : isFromGlobal   ? `<span class="item-badge ib-global">Global</span>`
                        : "";
   const actions = (item.locked || isFromGlobal) ? "" : `
     <span class="item-actions">
@@ -918,6 +967,9 @@ function renderDetailPanel(resetPreview = false) {
   moveBtn.disabled = false; // always enabled — locked items use CC prompt instead of API
   deleteBtn.disabled = !canDeleteItem(selectedItem);
 
+  // Why it applies (Effective Behavior section)
+  renderEffectiveBehavior(selectedItem);
+
   // CC Actions — contextual prompt buttons
   renderCcActions(selectedItem);
 
@@ -925,6 +977,89 @@ function renderDetailPanel(resetPreview = false) {
     preview.textContent = "Loading...";
     detailPreviewKey = itemKey(selectedItem);
   }
+}
+
+function renderEffectiveBehavior(item) {
+  const wrap = document.getElementById("detailEffective");
+  const text = document.getElementById("detailEffectiveText");
+  if (!wrap || !text || !item) { wrap?.classList.add("hidden"); return; }
+
+  const key = itemKey(item);
+  const isGlobal   = item.scopeId === "global";
+  const isAncestor = effectiveAncestorKeys.has(key);
+  const isShadowed = effectiveShadowedKeys.has(key);
+  const isConflict = effectiveConflictKeys.has(key);
+  const scope      = getScopeById(item.scopeId);
+  const scopeName  = scope?.name || item.scopeId;
+
+  let why = "";
+
+  switch (item.category) {
+    case "skill":
+      why = isGlobal
+        ? "This skill is installed globally and is available in all projects."
+        : "This skill is installed in this project's .claude/skills/ directory.";
+      break;
+    case "mcp":
+      if (isShadowed)
+        why = `A project-scoped MCP server with the same name takes precedence over this user-scoped one (rule: local > project > user).`;
+      else if (isGlobal)
+        why = "This user-scoped MCP server is active for this project. No project-scoped server with the same name was found.";
+      else
+        why = "This project-scoped MCP server takes precedence over any user-scoped server with the same name (rule: local > project > user).";
+      break;
+    case "command":
+      if (isConflict)
+        why = `A command with the same name exists at both user and project level. Claude Code does not guarantee which one applies — same-name conflicts are officially unsupported.`;
+      else
+        why = isGlobal
+          ? "This user-level command is globally available."
+          : "This command is defined for this project.";
+      break;
+    case "agent":
+      if (isShadowed)
+        why = "A project-level agent with the same name overrides this user-level one.";
+      else if (isGlobal)
+        why = "This user-level agent is available globally. No project-level agent with the same name was found.";
+      else
+        why = "This project-level agent is available in this project and overrides any user-level agent with the same name.";
+      break;
+    case "config":
+      if (isAncestor)
+        why = `This file is in a parent directory of the current project. Claude Code walks up the directory tree from the working directory and loads CLAUDE.md files it finds along the way.`;
+      else if (item.name === "CLAUDE.md" || item.name === ".claude/CLAUDE.md")
+        why = isGlobal
+          ? "The global CLAUDE.md is loaded in every Claude Code session."
+          : "This project CLAUDE.md is loaded when Claude Code runs in this project.";
+      else if (item.name === "settings.local.json")
+        why = "Overrides project-shared and user settings for this machine only (not committed to git).";
+      else if (item.name === "settings.json")
+        why = isGlobal
+          ? "User-level settings, overridden by project settings.json and settings.local.json."
+          : "Project-shared settings, overridden by settings.local.json if present.";
+      else
+        why = `From ${scopeName} scope.`;
+      break;
+    case "hook":
+      why = isGlobal
+        ? "This hook is configured globally in user settings."
+        : "This hook is configured for this project in project settings files.";
+      break;
+    case "memory":
+      if (isAncestor)
+        why = `Stored in a parent project directory (${scopeName}). May be relevant to this project depending on how Claude Code was invoked.`;
+      else
+        why = isGlobal
+          ? "This memory is stored globally and is accessible in all projects."
+          : "This memory is stored in this project's memory directory.";
+      break;
+    default:
+      why = CATEGORIES[item.category]?.effectiveRule || "";
+  }
+
+  if (!why) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  text.textContent = why;
 }
 
 function renderCcActions(item) {
@@ -2291,9 +2426,25 @@ function findVisibleScopeInTree(scope) {
  * and which items have unresolvable name conflicts (commands).
  * Called whenever showEffective toggles or scope changes.
  */
+/**
+ * Returns scopes whose repoDir is a path ancestor of the given scope's repoDir.
+ * e.g. if scopeId is /home/user/company/repo, returns the scope for /home/user/company if it exists.
+ */
+function getAncestorScopes(scopeId) {
+  const scope = getScopeById(scopeId);
+  if (!scope?.repoDir) return [];
+  return (data?.scopes || []).filter(s =>
+    s.repoDir &&
+    s.id !== scopeId &&
+    s.id !== "global" &&
+    scope.repoDir.startsWith(s.repoDir + "/")
+  );
+}
+
 function computeEffectiveSets(scopeId) {
   effectiveShadowedKeys = new Set();
   effectiveConflictKeys = new Set();
+  effectiveAncestorKeys = new Set();
   if (!showEffective || !scopeId || scopeId === "global") return;
 
   const projectItems = getItemsForScope(scopeId);
@@ -2318,6 +2469,15 @@ function computeEffectiveSets(scopeId) {
       effectiveConflictKeys.add(itemKey(i));
     }
   }
+
+  // Ancestor scopes: scopes whose repoDir is a path parent of this project.
+  // Their config items (especially CLAUDE.md) are ancestor-loaded by Claude Code.
+  const ancestorScopes = getAncestorScopes(scopeId);
+  for (const as of ancestorScopes) {
+    for (const i of getItemsForScope(as.id).filter(i => i.category === "config" || i.category === "memory")) {
+      effectiveAncestorKeys.add(itemKey(i));
+    }
+  }
 }
 
 function getVisibleItemsForScope(scopeId) {
@@ -2329,7 +2489,19 @@ function getVisibleItemsForScope(scopeId) {
     if (!itemMatchesFilters(item) || !itemMatchesSearch(item)) return false;
     return Boolean(CATEGORIES[item.category]?.effectiveRule);
   });
-  return [...ownItems, ...globalItems];
+
+  // Add ancestor scope items (CLAUDE.md + memories from path-parent projects)
+  const ancestorItems = [];
+  for (const as of getAncestorScopes(scopeId)) {
+    for (const item of getItemsForScope(as.id)) {
+      if ((item.category === "config" || item.category === "memory") &&
+          itemMatchesFilters(item) && itemMatchesSearch(item)) {
+        ancestorItems.push(item);
+      }
+    }
+  }
+
+  return [...ownItems, ...globalItems, ...ancestorItems];
 }
 
 function itemVisibleInMain(item) {
