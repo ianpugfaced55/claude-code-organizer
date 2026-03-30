@@ -9,7 +9,7 @@ export default defineConfig({
     { name: 'chromium', use: { browserName: 'chromium' } },
   ],
   use: {
-    headless: false,
+    headless: process.env.HEADED !== '1',
     launchOptions: { slowMo: 50 },
     // Reuse single browser, close pages between tests
     contextOptions: { ignoreHTTPSErrors: true },
