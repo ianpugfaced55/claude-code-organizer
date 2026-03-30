@@ -17,3 +17,19 @@ PLAN.md
 SHIP.md
 tests/
 test-results/
+
+# Cloned reference datasets (too large to push, download separately)
+datasets/agentdojo/
+datasets/community-rules/
+datasets/defender/
+datasets/hf-*/
+datasets/InjecGuard/
+datasets/MasterMCP/
+datasets/mcp-exploit-demo/
+datasets/mcp-injection-experiments/
+datasets/mcpSafetyScanner/
+datasets/MCPSecBench/
+datasets/mcp_tool_poisoning_attacks/
+datasets/MCPTox-Benchmark/
+datasets/mcp-vulnerabilities/
+datasets/prompt-injection-datasets/
