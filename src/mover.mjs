@@ -451,8 +451,9 @@ export function getValidDestinations(item, scopes) {
           return s.id === "global" || (s.repoDir && !sharesGlobalClaudeDir(s));
         case "mcp":
           return true; // MCP configs live in claudeProjectDir, not repoDir/.claude/
+        // plan and rule: no official scope rule — moving has no meaningful effect
         case "plan":
-          return true;
+        case "rule":
         default:
           return false;
       }

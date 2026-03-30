@@ -1965,6 +1965,26 @@ function setupModals() {
   });
 }
 
+function getMoveWarning(item) {
+  const cat = item.category;
+  if (cat === "mcp") {
+    const allMcp = (data?.items || []).filter(i => i.category === "mcp" && i.name === item.name && i.scopeId !== item.scopeId);
+    if (allMcp.length > 0) return `⚠ An MCP server named "${item.name}" exists in another scope. The narrower scope will take precedence (local > project > user).`;
+    return "Moving changes which scope this server loads from. Narrower scopes (project) override broader ones (user).";
+  }
+  if (cat === "command") {
+    const allCmd = (data?.items || []).filter(i => i.category === "command" && i.name === item.name && i.scopeId !== item.scopeId);
+    if (allCmd.length > 0) return `⚠ A command named "${item.name}" exists in another scope. Same-name conflicts are not reliably supported by Claude Code.`;
+    return null;
+  }
+  if (cat === "agent") {
+    const allAgent = (data?.items || []).filter(i => i.category === "agent" && i.name === item.name && i.scopeId !== item.scopeId);
+    if (allAgent.length > 0) return `⚠ An agent named "${item.name}" exists in another scope. Project-level agents override same-name user agents.`;
+    return null;
+  }
+  return null;
+}
+
 async function openMoveModal(item) {
   const res = await fetchJson(`/api/destinations?path=${encodeURIComponent(item.path)}&category=${encodeURIComponent(item.category)}&name=${encodeURIComponent(item.name)}`);
   if (!res.ok) {
@@ -2004,6 +2024,16 @@ async function openMoveModal(item) {
       await doMove(item, selectedDest);
     }
   };
+
+  // Show move warning if applicable
+  const warningEl = document.getElementById("moveWarning");
+  const warning = getMoveWarning(item);
+  if (warning && warningEl) {
+    warningEl.textContent = warning;
+    warningEl.classList.remove("hidden");
+  } else if (warningEl) {
+    warningEl.classList.add("hidden");
+  }
 
   document.getElementById("moveModal").classList.remove("hidden");
 }
