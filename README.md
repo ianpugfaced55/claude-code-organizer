@@ -6,7 +6,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
+[![Tests](https://img.shields.io/badge/tests-152%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
 [![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/claude-code-organizer)
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/claude-code-organizer)
 English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
@@ -17,7 +17,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 ![Claude Code Organizer Demo](docs/demo.gif)
 
-<sub>138 E2E tests | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
+<sub>152 E2E tests | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
 
 **[Watch the walkthrough on YouTube](https://www.youtube.com/watch?v=UAQsHwNHfcw)** — community demo by AI Coding Daily. Thank you for covering CCO!
 
@@ -39,7 +39,7 @@ Other tools solve these one at a time. **CCO solves them in one loop:**
 
 **Find** → Spot duplicates and wrong-scope items. Context Budget shows what's eating your tokens. Security Scanner shows what's poisoning your tools.
 
-**Fix** → Drag to the right scope. Delete the duplicate. Click a security finding and land directly on the MCP server entry — delete it, move it, or inspect its config. Done.
+**Fix** → Move items to the right scope. Delete the duplicate. Click a security finding and land directly on the MCP server entry — delete it, move it, or inspect its config. Done.
 
 ![Scan, Find, Fix — all in one dashboard](docs/3panel.png)
 
@@ -62,9 +62,9 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 | | **CCO** | Standalone scanners | Desktop apps | VS Code extensions |
 |---|:---:|:---:|:---:|:---:|
 | Global vs Project visibility | **Yes** | No | No | Partial |
-| Drag-and-drop between scopes | **Yes** | No | No | No |
+| Move between scopes | **Yes** | No | No | No |
 | Security scan → click finding → navigate → delete | **Yes** | Scan only | No | No |
-| Per-item context budget with inheritance | **Yes** | No | No | No |
+| Per-item context budget with scope breakdown | **Yes** | No | No | No |
 | Undo every action | **Yes** | No | No | No |
 | Bulk operations | **Yes** | No | No | No |
 | Zero-install (`npx`) | **Yes** | Varies | No (Tauri/Electron) | No (VS Code) |
@@ -86,29 +86,39 @@ Your context window is not 200K tokens. It's 200K minus everything Claude pre-lo
 
 ## Keep Your Scopes Clean
 
-CCO presents a simplified Global / Project view of your Claude Code config:
+CCO shows what loads globally vs what stays project-specific:
 
 ```
 Global                    ← loads into EVERY session on your machine
   └─ Project              ← loads only when you're in this directory
 ```
 
-Projects inherit from Global only. Sibling projects do not inherit from each other — filesystem nesting does not create extra inheritance layers.
+Different categories follow different official rules — there is no single universal inheritance model:
+
+- **MCP servers**: resolved by `local > project > user` precedence. Same-name servers use the narrower scope.
+- **Agents**: project-level agents override same-name user agents.
+- **Commands**: available from user and project. Same-name conflicts are not reliably supported.
+- **Skills**: available from personal, project, and plugin sources.
+- **Config / Settings**: resolved by precedence chain (`managed > CLI > project local > project shared > user`).
+
+Click **✦ Show Effective** to see what actually applies in any project — each category resolves by its own rule. Hover any category pill for specifics.
 
 Here's the problem: **Claude creates memories and skills in whatever directory you're currently in.** You tell Claude "always use ESM imports" while working in `~/myapp` — that memory is trapped in that project scope. Open a different project, Claude doesn't know it. You tell it again. Now you have the same memory in two places, both eating context tokens.
 
 Same with skills. You build a deploy skill in your backend repo — it lands in that project's scope. Your other projects can't see it. You end up recreating it everywhere.
 
-**CCO shows every scope in one view.** You can see exactly which memories, skills, and MCP servers affect which projects — then drag them to the right scope.
+**CCO shows every scope in one view.** You can see exactly which memories, skills, and MCP servers affect which projects — then move them to the right scope.
 
 ![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
 
 Teams installed twice, Gmail three times, Playwright three times. You configured them in one scope, Claude reinstalled them in another.
 
-- **Move anything with drag-and-drop** — Drag a memory from Project to Global. One gesture. Now every project on your machine has it.
+- **Move anything between scopes** — Move a memory from Project to Global. Now every project on your machine has it.
+- **Show Effective** — See what actually applies in a project. Each category follows its own official rule: MCP uses local > project > user precedence, agents use project-overrides-user, commands flag unsupported same-name conflicts. Hover any category pill for its specific rule.
 - **Find duplicates instantly** — All items grouped by category across scopes. Three copies of the same memory? Delete the extras.
 - **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
 - **Bulk operations** — Select mode: tick multiple items, move or delete all at once.
+- **Flat or Tree view** — Default flat view lists all scopes equally. Toggle tree view (🌲) to see filesystem structure when debugging config placement.
 
 ## Catch Poisoned Tools Before They Catch You
 
@@ -133,8 +143,8 @@ CCO connects to every MCP server, retrieves actual tool definitions, and runs th
 | MCP Servers | Yes | Yes | Yes | Global + Project |
 | Commands (slash commands) | Yes | Yes | Yes | Global + Project |
 | Agents (subagents) | Yes | Yes | Yes | Global + Project |
-| Rules (project constraints) | Yes | Yes | Yes | Global + Project |
-| Plans | Yes | Yes | Yes | Global + Project |
+| Rules (project constraints) | Yes | — | Yes | Global + Project |
+| Plans | Yes | — | Yes | Global + Project |
 | Sessions | Yes | — | Yes | Project only |
 | Config (CLAUDE.md, settings.json) | Yes | Locked | — | Global + Project |
 | Hooks | Yes | Locked | — | Global + Project |
