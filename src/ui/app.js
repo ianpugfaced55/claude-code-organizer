@@ -34,6 +34,7 @@ let selectMode = false;
 let toastTimer = null;
 let detailPreviewKey = null;
 let mcpDisabledNames = new Set(); // disabled MCP server names for current scope
+let mcpDisabledScopeId = null;   // which scope the disabled list was loaded for
 
 const uiState = {
   expandedScopes: new Set(),
@@ -577,8 +578,13 @@ function renderAll() {
   renderContentHeader();
   renderPills();
   renderRuleBar();
-  // Load disabled MCP list first, then render content
-  loadMcpDisabledList().then(() => { renderMainContent(); initSortable(); });
+  // If scope changed, load disabled list then re-render; otherwise render immediately with cache
+  if (mcpDisabledScopeId !== selectedScopeId) {
+    loadMcpDisabledList().then(() => { renderMainContent(); initSortable(); });
+  } else {
+    renderMainContent();
+    initSortable();
+  }
   updateBulkBar();
 
   const needsPreview = selectedItem && itemKey(selectedItem) !== detailPreviewKey;
@@ -831,7 +837,9 @@ function renderRuleBar() {
   };
 }
 
-async function loadMcpDisabledList() {
+async function loadMcpDisabledList(force = false) {
+  if (!force && mcpDisabledScopeId === selectedScopeId) return; // already loaded for this scope
+  mcpDisabledScopeId = selectedScopeId;
   const scope = getScopeById(selectedScopeId);
   if (!scope?.repoDir) { mcpDisabledNames = new Set(); return; }
   try {
