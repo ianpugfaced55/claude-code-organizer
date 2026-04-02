@@ -322,6 +322,17 @@ function setupItemList() {
       return;
     }
 
+    const newSessionBtn = event.target.closest(".new-session-btn");
+    if (newSessionBtn) {
+      const scope = getScopeById(newSessionBtn.dataset.scopeId);
+      const dir = scope?.repoDir || "~";
+      const cmd = `cd ${dir} && claude`;
+      navigator.clipboard.writeText(cmd).then(() => {
+        toast("Copied: " + cmd);
+      });
+      return;
+    }
+
     const sortBtn = event.target.closest(".sort-btn");
     if (sortBtn) {
       const cat = sortBtn.dataset.cat;
@@ -339,7 +350,7 @@ function setupItemList() {
     }
 
     const catHdr = event.target.closest(".cat-hdr");
-    if (catHdr && !event.target.closest(".sort-btn")) {
+    if (catHdr && !event.target.closest(".sort-btn") && !event.target.closest(".new-session-btn")) {
       const key = `${selectedScopeId}::${catHdr.dataset.cat}`;
       if (uiState.collapsedCats.has(key)) uiState.collapsedCats.delete(key);
       else uiState.collapsedCats.add(key);
@@ -842,6 +853,7 @@ function renderMainContent() {
           <span class="cat-hdr-ico">${config.icon}</span>
           <span class="cat-hdr-nm">${esc(config.label)}</span>
           <span class="cat-hdr-cnt">${pluralize(catItems.length, "item")}</span>
+          ${category === "session" ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
           ${category === "mcp" ? "" : `<span class="cat-hdr-sort">
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "size") ? " active" : ""}" data-cat="${esc(category)}" data-sort="size">Size ${sortArrow(`${scope.id}::${category}`, "size")}</button>
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "date") ? " active" : ""}" data-cat="${esc(category)}" data-sort="date">Date ${sortArrow(`${scope.id}::${category}`, "date")}</button>
@@ -1901,7 +1913,16 @@ async function loadPreview(item) {
 
     const res = await fetchJson(`/api/file-content?path=${encodeURIComponent(filePath)}`);
     if (currentKey !== detailPreviewKey) return;
-    preview.textContent = res.ok ? res.content : (res.error || "Cannot load preview");
+    if (!res.ok) { preview.textContent = res.error || "Cannot load preview"; return; }
+
+    // Render markdown for file-based categories (.md files)
+    const isMd = filePath.endsWith(".md") || ["memory", "skill", "rule", "plan", "agent", "command", "config"].includes(item.category);
+    if (isMd) {
+      preview.textContent = "";
+      preview.innerHTML = `<div class="md-preview">${renderMarkdown(res.content)}</div>`;
+    } else {
+      preview.textContent = res.content;
+    }
   } catch {
     if (currentKey !== detailPreviewKey) return;
     preview.textContent = "Failed to load preview";
@@ -2739,6 +2760,20 @@ function esc(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Render markdown to HTML using marked.js.
+ * Strips YAML frontmatter (---...---) common in memory/skill files.
+ * Falls back to escaped plain text if marked is not loaded.
+ */
+function renderMarkdown(text) {
+  if (!text) return "";
+  // Strip YAML frontmatter
+  let content = text.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+  // Fallback if marked CDN failed to load
+  if (typeof marked === "undefined") return `<pre>${esc(content)}</pre>`;
+  return marked.parse(content);
 }
 
 function cssEscape(value) {

@@ -444,6 +444,21 @@ body {
   border-radius: 10px;
 }
 
+.new-session-btn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  border: 1px solid var(--accent-light);
+  background: var(--accent-light);
+  color: var(--accent-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 100ms;
+}
+.new-session-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .cat-hdr-sort { display: flex; gap: 4px; margin-left: 8px; }
 .sort-btn {
   padding: 2px 8px;
@@ -663,6 +678,46 @@ body {
   overflow-y: auto;
   white-space: pre-wrap;
 }
+
+/* ── Markdown preview (memories, skills, rules, plans, agents, commands) ── */
+.d-preview:has(.md-preview) { white-space: normal; font-family: "Lato", sans-serif; font-size: 0.8rem; line-height: 1.7; }
+.md-preview h1 { font-size: 1.15rem; font-weight: 900; color: var(--text-primary); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-light); }
+.md-preview h2 { font-size: 1rem; font-weight: 800; color: var(--text-primary); margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border-light); }
+.md-preview h3 { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); margin: 12px 0 4px; }
+.md-preview h4, .md-preview h5, .md-preview h6 { font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); margin: 10px 0 4px; }
+.md-preview p { margin: 0 0 8px; color: var(--text-secondary); }
+.md-preview p:last-child { margin-bottom: 0; }
+.md-preview a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.md-preview a:hover { text-decoration: underline; }
+.md-preview strong { font-weight: 700; color: var(--text-primary); }
+.md-preview em { font-style: italic; }
+.md-preview ul, .md-preview ol { margin: 4px 0 8px; padding-left: 20px; }
+.md-preview li { margin-bottom: 3px; }
+.md-preview li > ul, .md-preview li > ol { margin: 2px 0 0; }
+.md-preview blockquote {
+  margin: 8px 0; padding: 6px 12px;
+  border-left: 3px solid var(--accent); background: var(--accent-light);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.md-preview blockquote p { color: var(--accent-text); margin-bottom: 4px; }
+.md-preview pre {
+  background: var(--bg); border: 1px solid var(--border-light);
+  border-radius: var(--radius); padding: 8px 10px; margin: 6px 0;
+  overflow-x: auto; white-space: pre;
+  font-family: "Geist Mono", monospace; font-size: 0.72rem; line-height: 1.5;
+}
+.md-preview pre code { background: none; border: none; padding: 0; font-size: inherit; }
+.md-preview code {
+  background: var(--bg); border: 1px solid var(--border-light);
+  border-radius: 3px; padding: 1px 4px;
+  font-family: "Geist Mono", monospace; font-size: 0.72rem;
+}
+.md-preview table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.75rem; }
+.md-preview th { text-align: left; font-weight: 700; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-faint); padding: 4px 8px; border-bottom: 2px solid var(--border-light); }
+.md-preview td { padding: 4px 8px; border-bottom: 1px solid var(--border-light); vertical-align: top; }
+.md-preview tr:last-child td { border-bottom: none; }
+.md-preview hr { border: none; border-top: 1px solid var(--border-light); margin: 12px 0; }
+.md-preview img { max-width: 100%; border-radius: var(--radius); }
 
 /* ── Session chat preview ──────────────────────────────────────── */
 .d-preview:has(.chat-container) { white-space: normal; padding: 6px 10px; }
