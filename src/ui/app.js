@@ -414,6 +414,80 @@ function setupDetailPanel() {
   document.getElementById("detailDelete").addEventListener("click", () => {
     if (selectedItem && canDeleteItem(selectedItem)) openDeleteModal(selectedItem);
   });
+  document.getElementById("costBackBtn").addEventListener("click", () => {
+    document.getElementById("costBreakdown").classList.add("hidden");
+    document.querySelector(".detail-body").classList.remove("hidden");
+  });
+}
+
+function formatTokenCount(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+function formatDurationMs(ms) {
+  if (ms < 60_000) return Math.round(ms / 1000) + "s";
+  const mins = Math.floor(ms / 60_000);
+  const secs = Math.round((ms % 60_000) / 1000);
+  if (mins < 60) return mins + "m " + secs + "s";
+  const hrs = Math.floor(mins / 60);
+  return hrs + "h " + (mins % 60) + "m";
+}
+
+async function showCostBreakdown(item) {
+  const costPanel = document.getElementById("costBreakdown");
+  const detailBody = document.querySelector(".detail-body");
+  const totalEl = document.getElementById("costTotal");
+  const durationEl = document.getElementById("costDuration");
+  const modelsEl = document.getElementById("costModels");
+
+  detailBody.classList.add("hidden");
+  costPanel.classList.remove("hidden");
+  totalEl.textContent = "Loading...";
+  durationEl.textContent = "";
+  modelsEl.innerHTML = "";
+
+  try {
+    const res = await fetch(`/api/session-cost?path=${encodeURIComponent(item.path)}`);
+    const data = await res.json();
+    if (!data.ok) { totalEl.textContent = "Error loading cost"; return; }
+
+    // Total tokens across all models
+    const totalInput = data.breakdown.reduce((s, m) => s + m.inputTokens, 0);
+    const totalOutput = data.breakdown.reduce((s, m) => s + m.outputTokens, 0);
+    const totalTokens = totalInput + totalOutput + data.breakdown.reduce((s, m) => s + m.cacheRead + m.cacheWrite, 0);
+    totalEl.textContent = formatTokenCount(totalTokens) + " tokens";
+    const parts = [];
+    if (data.durationMs > 0) parts.push(formatDurationMs(data.durationMs));
+    parts.push("API equivalent: $" + data.totalCostUSD.toFixed(2));
+    durationEl.textContent = parts.join(" · ");
+
+    if (!data.breakdown.length) {
+      modelsEl.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;">No token usage data in this session.</div>`;
+      return;
+    }
+
+    modelsEl.innerHTML = data.breakdown.map(m => {
+      const mTotal = m.inputTokens + m.outputTokens + m.cacheRead + m.cacheWrite;
+      return `
+      <div class="d-cost-model">
+        <div class="d-cost-model-head">
+          <span class="d-cost-model-name">${esc(m.model)}</span>
+          <span class="d-cost-model-cost">${formatTokenCount(mTotal)} tokens</span>
+        </div>
+        <div class="d-cost-model-tokens">
+          <div class="d-cost-token-row"><span class="d-cost-token-label">Input</span><span class="d-cost-token-val">${formatTokenCount(m.inputTokens)}</span></div>
+          <div class="d-cost-token-row"><span class="d-cost-token-label">Output</span><span class="d-cost-token-val">${formatTokenCount(m.outputTokens)}</span></div>
+          <div class="d-cost-token-row"><span class="d-cost-token-label">Cache Read</span><span class="d-cost-token-val">${formatTokenCount(m.cacheRead)}</span></div>
+          <div class="d-cost-token-row"><span class="d-cost-token-label">Cache Write</span><span class="d-cost-token-val">${formatTokenCount(m.cacheWrite)}</span></div>
+        </div>
+        <div class="d-cost-turns">${m.turns} turn${m.turns !== 1 ? "s" : ""} · API equivalent: $${m.costUSD.toFixed(2)}</div>
+      </div>
+    `}).join("");
+  } catch {
+    totalEl.textContent = "Error loading cost";
+  }
 }
 
 function setupBulkBar() {
@@ -1046,6 +1120,12 @@ function renderDetailPanel(resetPreview = false) {
   const openBtn = document.getElementById("detailOpen");
   const moveBtn = document.getElementById("detailMove");
   const deleteBtn = document.getElementById("detailDelete");
+  const costPanel = document.getElementById("costBreakdown");
+  const detailBody = document.querySelector(".detail-body");
+
+  // always reset cost panel when switching items
+  costPanel.classList.add("hidden");
+  detailBody.classList.remove("hidden");
 
   if (!selectedItem) {
     title.textContent = "Select an item";
@@ -1068,7 +1148,14 @@ function renderDetailPanel(resetPreview = false) {
 
   const scope = getScopeById(selectedItem.scopeId);
   title.textContent = selectedItem.name;
-  crumb.innerHTML = renderBreadcrumb(scope);
+
+  // For sessions: replace breadcrumb with cost breakdown button
+  if (selectedItem.category === "session" && selectedItem.path?.endsWith(".jsonl")) {
+    crumb.innerHTML = `<button class="d-btn d-btn-cost" id="crumbCostBtn" type="button">💰 Cost Breakdown</button>`;
+    document.getElementById("crumbCostBtn").addEventListener("click", () => showCostBreakdown(selectedItem));
+  } else {
+    crumb.innerHTML = renderBreadcrumb(scope);
+  }
   scopeEl.textContent = scope ? capitalize(scope.name) : selectedItem.scopeId;
   type.innerHTML = renderBadge(selectedItem, true);
 
@@ -1091,6 +1178,7 @@ function renderDetailPanel(resetPreview = false) {
   openBtn.disabled = false;
   moveBtn.disabled = false; // always enabled — locked items use CC prompt instead of API
   deleteBtn.disabled = !canDeleteItem(selectedItem);
+
 
   // Why it applies (Effective Behavior section)
   renderEffectiveBehavior(selectedItem);

@@ -704,6 +704,81 @@ async function handleRequest(req, res) {
     }
   }
 
+  // GET /api/session-cost?path=... — parse JSONL session and compute per-model cost breakdown
+  if (path === "/api/session-cost" && req.method === "GET") {
+    const filePath = url.searchParams.get("path");
+    if (!filePath || !filePath.endsWith(".jsonl") || !isPathAllowed(filePath)) {
+      return json(res, { ok: false, error: "Invalid or disallowed session path" }, 400);
+    }
+    // pricing per million tokens [input, output, cacheRead, cacheWrite, webSearch per req]
+    const PRICING = {
+      "claude-opus-4-6":       { i: 5,  o: 25,  cr: 0.5,  cw: 6.25, ws: 0.01 },
+      "claude-opus-4-5":       { i: 5,  o: 25,  cr: 0.5,  cw: 6.25, ws: 0.01 },
+      "claude-opus-4-1":       { i: 15, o: 75,  cr: 1.5,  cw: 18.75, ws: 0.01 },
+      "claude-sonnet-4-6":     { i: 3,  o: 15,  cr: 0.3,  cw: 3.75, ws: 0.01 },
+      "claude-sonnet-4-5":     { i: 3,  o: 15,  cr: 0.3,  cw: 3.75, ws: 0.01 },
+      "claude-sonnet-4-1":     { i: 3,  o: 15,  cr: 0.3,  cw: 3.75, ws: 0.01 },
+      "claude-haiku-4-5":      { i: 1,  o: 5,   cr: 0.1,  cw: 1.25, ws: 0.01 },
+      "claude-haiku-3-5":      { i: 0.8, o: 4,  cr: 0.08, cw: 1,    ws: 0.01 },
+    };
+    const DEFAULT_PRICING = { i: 3, o: 15, cr: 0.3, cw: 3.75, ws: 0.01 };
+
+    try {
+      const content = await readFile(filePath, "utf-8");
+      const models = {};  // { modelName: { inputTokens, outputTokens, cacheRead, cacheWrite, webSearches, turns } }
+      let firstTs = null, lastTs = null;
+
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.timestamp) {
+            const ts = entry.timestamp;
+            if (!firstTs || ts < firstTs) firstTs = ts;
+            if (!lastTs || ts > lastTs) lastTs = ts;
+          }
+          if (entry.type === "assistant" && entry.message?.usage && entry.message?.model !== "<synthetic>") {
+            const model = entry.message.model || "unknown";
+            const u = entry.message.usage;
+            if (!models[model]) models[model] = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0, turns: 0 };
+            models[model].inputTokens += u.input_tokens || 0;
+            models[model].outputTokens += u.output_tokens || 0;
+            models[model].cacheRead += u.cache_read_input_tokens || 0;
+            models[model].cacheWrite += u.cache_creation_input_tokens || 0;
+            models[model].webSearches += (u.server_tool_use?.web_search_requests || 0);
+            models[model].turns++;
+          }
+        } catch { /* skip malformed */ }
+      }
+
+      // calculate cost per model
+      let totalCost = 0;
+      const breakdown = [];
+      for (const [model, m] of Object.entries(models)) {
+        const p = PRICING[model] || DEFAULT_PRICING;
+        const cost = (m.inputTokens * p.i + m.outputTokens * p.o + m.cacheRead * p.cr + m.cacheWrite * p.cw) / 1_000_000 + m.webSearches * p.ws;
+        totalCost += cost;
+        breakdown.push({ model, ...m, costUSD: Math.round(cost * 10000) / 10000 });
+      }
+      breakdown.sort((a, b) => b.costUSD - a.costUSD);
+
+      // duration
+      let durationMs = 0;
+      if (firstTs && lastTs) {
+        durationMs = new Date(lastTs).getTime() - new Date(firstTs).getTime();
+      }
+
+      return json(res, {
+        ok: true,
+        totalCostUSD: Math.round(totalCost * 10000) / 10000,
+        durationMs,
+        breakdown,
+      });
+    } catch {
+      return json(res, { ok: false, error: "Cannot read session" }, 400);
+    }
+  }
+
   // GET /api/browse-dirs?path=... — list subdirectories for folder picker
   if (path === "/api/browse-dirs" && req.method === "GET") {
     const dirPath = url.searchParams.get("path") || HOME;

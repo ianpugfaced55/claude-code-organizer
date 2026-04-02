@@ -1586,3 +1586,26 @@ body {
   30% { background: oklch(0.58 0.15 175 / 0.15); }
 }
 .sec-flash { animation: sec-flash-anim 1.5s ease; }
+
+/* ── Cost Breakdown Panel ── */
+.d-cost-breakdown { padding: 16px 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.d-cost-breakdown.hidden { display: none; }
+.d-cost-header { display: flex; align-items: baseline; gap: 12px; }
+.d-cost-total { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.d-cost-duration { font-size: 0.7rem; color: var(--text-muted); }
+.d-cost-models { display: flex; flex-direction: column; gap: 10px; }
+.d-cost-model { background: var(--surface-inset); border-radius: var(--radius); padding: 12px 14px; }
+.d-cost-model-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.d-cost-model-name { font-size: 0.78rem; font-weight: 700; color: var(--text-primary); }
+.d-cost-model-cost { font-size: 0.85rem; font-weight: 800; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.d-cost-model-tokens { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.d-cost-token-row { display: flex; justify-content: space-between; }
+.d-cost-token-label { font-size: 0.65rem; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.3px; }
+.d-cost-token-val { font-size: 0.72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.d-cost-turns { font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; }
+.d-btn-cost { background: oklch(0.58 0.14 45 / 0.12); color: oklch(0.45 0.12 45); }
+.d-btn-cost:hover { background: oklch(0.58 0.14 45 / 0.22); }
+.d-btn-back { background: var(--surface-inset); color: var(--text-secondary); align-self: flex-start; }
+.d-btn-back:hover { background: var(--border); }
+.dark .d-btn-cost { background: oklch(0.58 0.14 45 / 0.15); color: oklch(0.72 0.12 45); }
+.dark .d-btn-cost:hover { background: oklch(0.58 0.14 45 / 0.25); }
