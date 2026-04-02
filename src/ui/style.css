@@ -1300,9 +1300,6 @@ body {
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ── Security Scan: Sidebar button ── */
-.sidebar-btn-row { display: flex; gap: 6px; margin: 10px 12px 0; }
-.sidebar-half-btn { flex: 1; margin: 0 !important; width: auto !important; }
-
 .sidebar-security-btn {
   display: flex;
   align-items: center;
@@ -1453,26 +1450,45 @@ body {
 .sec-dup-winner { font-weight: 600; color: var(--accent-text); }
 .sec-dup-sig { font-size: 0.6rem; color: var(--text-faint); background: var(--surface-inset); padding: 1px 5px; border-radius: 3px; }
 
-/* ── MCP Policy Panel (right side, same level as Security Scan) ──── */
-.policy-panel-note { font-size: 0.7rem; color: var(--text-muted); padding: 0 16px 10px; border-bottom: 1px solid var(--border-light); line-height: 1.5; }
-.policy-panel-body { padding: 12px 16px; overflow-y: auto; }
-.policy-section { margin-bottom: 14px; }
-.policy-section-hdr { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
-.policy-entry { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; margin-bottom: 3px; font-size: 0.74rem; }
-.policy-deny { background: oklch(0.95 0.04 25); }
-.policy-allow { background: oklch(0.95 0.04 145); }
-.policy-entry-name { font-weight: 600; }
-.policy-entry-tier { font-size: 0.58rem; color: var(--text-faint); background: var(--surface-inset); padding: 1px 5px; border-radius: 3px; margin-left: auto; }
-.policy-remove-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.8rem; padding: 2px 4px; }
-.policy-remove-btn:hover { color: var(--danger); }
-.policy-empty { font-size: 0.7rem; color: var(--text-faint); font-style: italic; padding: 2px 0; }
-.policy-server-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: 0.74rem; margin-bottom: 2px; }
-.policy-server-row:hover { background: var(--surface-inset); }
-.policy-server-name { font-weight: 600; flex: 1; }
-.policy-server-scopes { font-size: 0.58rem; color: var(--text-faint); }
-.policy-action-select { font-size: 0.65rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); cursor: pointer; font-family: inherit; }
-.policy-action-select:hover { border-color: var(--accent); }
-.policy-action-select option { font-size: 0.72rem; }
+/* ── MCP Controls Panel ────────────────────────────────────────────── */
+.mcp-controls-body { padding: 12px 16px; overflow-y: auto; }
+.mcp-controls-note { font-size: 0.68rem; color: var(--text-muted); line-height: 1.5; margin-top: 12px; }
+.mcp-controls-note code { font-size: 0.64rem; background: var(--surface-inset); padding: 1px 4px; border-radius: 3px; font-family: "Geist Mono", monospace; }
+.mcp-controls-section { margin-bottom: 8px; }
+.mcp-controls-section-hdr { font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+.mcp-controls-empty { font-size: 0.72rem; color: var(--text-faint); font-style: italic; padding: 6px 0; }
+.mcp-controls-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius); font-size: 0.78rem; margin-bottom: 3px; background: var(--surface-inset); }
+.mcp-controls-name { font-weight: 600; flex: 1; color: var(--text-primary); }
+.mcp-controls-remove-btn {
+  background: none; border: none; cursor: pointer; color: var(--text-faint);
+  font-size: 0.8rem; padding: 2px 6px; border-radius: 3px; transition: all 100ms;
+}
+.mcp-controls-remove-btn:hover { color: var(--danger); background: oklch(0.95 0.04 25); }
+
+.mcp-controls-add { margin-top: 8px; }
+.mcp-controls-add-wrap { position: relative; }
+.mcp-controls-input {
+  width: 100%; padding: 7px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg); color: var(--text-primary);
+  font-size: 0.76rem; font-family: inherit; outline: none; box-sizing: border-box;
+}
+.mcp-controls-input:focus { border-color: var(--accent); }
+.mcp-controls-input::placeholder { color: var(--text-faint); }
+
+.mcp-controls-suggestions {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
+  background: var(--surface); border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 4px 12px oklch(0.20 0.01 70 / 0.12);
+  max-height: 200px; overflow-y: auto;
+}
+.mcp-sug-item {
+  padding: 6px 10px; font-size: 0.74rem; cursor: pointer; font-weight: 500;
+  color: var(--text-primary);
+}
+.mcp-sug-item:hover { background: var(--accent-light); color: var(--accent-text); }
+.mcp-sug-empty { color: var(--text-faint); font-style: italic; cursor: default; }
+.mcp-sug-empty:hover { background: none; }
 
 .security-clean {
   padding: 14px 12px;

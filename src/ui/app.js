@@ -195,7 +195,7 @@ function setupUi() {
   setupContextBudget();
   setupResizers();
   setupSecurityScan();
-  setupPolicyPanel();
+  setupMcpControls();
 }
 
 function setupSearch() {
@@ -2779,152 +2779,126 @@ function renderMarkdown(text) {
 
 // ── MCP Policy Panel ──────────────────────────────────────────────
 
-async function openMcpPolicyPanel() {
-  const panel = document.getElementById("policyPanel");
+async function openMcpControlsPanel() {
+  const panel = document.getElementById("mcpControlsPanel");
   panel.classList.remove("hidden");
 
-  const body = document.getElementById("policyBody");
-  body.innerHTML = `<div class="ctx-budget-loading">Loading policy…</div>`;
+  const scope = getScopeById(selectedScopeId);
+  const projectPath = scope?.repoDir;
+  const title = document.getElementById("mcpControlsTitle");
+  title.textContent = `MCP Controls — ${scope?.name || "Select a project"}`;
 
-  const [policyRes, scanRes] = await Promise.all([
-    fetchJson("/api/mcp-policy"),
-    data ? Promise.resolve(data) : fetchJson("/api/scan"),
-  ]);
+  const body = document.getElementById("mcpControlsBody");
 
-  if (!policyRes.ok) { body.innerHTML = `<div class="policy-empty">Failed to load policy</div>`; return; }
-
-  // Build unique server list with approval state
-  const allMcp = (scanRes?.items || []).filter(i => i.category === "mcp");
-  const serverMap = new Map(); // name → { scopes: Set, approvalState, config }
-  for (const item of allMcp) {
-    if (!serverMap.has(item.name)) {
-      serverMap.set(item.name, { scopes: new Set(), approvalState: null, config: item.mcpConfig });
-    }
-    const entry = serverMap.get(item.name);
-    entry.scopes.add(item.scopeId === "global" ? "global" : (item.scopeId || "").split("-").pop() || item.scopeId);
-    if (item.approvalState) entry.approvalState = item.approvalState;
+  if (!projectPath) {
+    body.innerHTML = `<div class="mcp-controls-note">Select a project scope to manage disabled MCP servers.</div>`;
+    return;
   }
 
-  // Find policy status per server
-  const statusMap = {};
-  for (const s of policyRes.servers) statusMap[s.name] = s.status;
+  body.innerHTML = `<div class="ctx-budget-loading">Loading…</div>`;
 
-  // Pending approval servers
-  const pending = allMcp.filter(i => i.approvalState === "pending");
-  const rejected = allMcp.filter(i => i.approvalState === "rejected");
+  // Ensure scan data is available for server name list
+  if (!data) { data = await fetchJson("/api/scan"); renderAll(); }
+
+  const disabledRes = await fetchJson(`/api/mcp-disabled?project=${encodeURIComponent(projectPath)}`);
+  if (!disabledRes.ok) { body.innerHTML = `<div class="mcp-controls-note">Failed to load.</div>`; return; }
+
+  const disabled = disabledRes.disabled;
+
+  // All unique MCP names across all scopes (for autocomplete)
+  const allMcp = (data?.items || []).filter(i => i.category === "mcp");
+  const allNames = [...new Set(allMcp.map(i => i.name))].sort();
+  const availableToDisable = allNames.filter(n => !disabled.includes(n));
 
   let html = "";
 
-  // Denied servers
-  html += `<div class="policy-section">
-    <div class="policy-section-hdr">❌ Denied (${policyRes.denylist.length})</div>
-    ${policyRes.denylist.length === 0 ? '<div class="policy-empty">No denied servers</div>' :
-      policyRes.denylist.map(e => `<div class="policy-entry policy-deny">
-        <span class="policy-entry-name">${esc(e.serverName || e.serverUrl || JSON.stringify(e.serverCommand) || "?")}</span>
-        <span class="policy-entry-tier">${esc(e.tier)}</span>
-        ${e.tier !== "managed" ? `<button class="policy-remove-btn" data-action="remove-deny" data-entry='${esc(JSON.stringify(e))}'>✕</button>` : ""}
-      </div>`).join("")}
-  </div>`;
+  // Disabled list (todo-list style)
+  html += `<div class="mcp-controls-section">
+    <div class="mcp-controls-section-hdr">Disabled in this project${disabled.length > 0 ? ` (${disabled.length})` : ""}</div>`;
 
-  // Allowed servers
-  html += `<div class="policy-section">
-    <div class="policy-section-hdr">✅ Allowed (${policyRes.allowlist.length})</div>
-    ${policyRes.allowlist.length === 0 ? '<div class="policy-empty">No allowlist — all servers allowed by default</div>' :
-      policyRes.allowlist.map(e => `<div class="policy-entry policy-allow">
-        <span class="policy-entry-name">${esc(e.serverName || e.serverUrl || JSON.stringify(e.serverCommand) || "?")}</span>
-        <span class="policy-entry-tier">${esc(e.tier)}</span>
-        ${e.tier !== "managed" ? `<button class="policy-remove-btn" data-action="remove-allow" data-entry='${esc(JSON.stringify(e))}'>✕</button>` : ""}
-      </div>`).join("")}
-  </div>`;
-
-  // Pending approval
-  if (pending.length > 0 || rejected.length > 0) {
-    html += `<div class="policy-section">
-      <div class="policy-section-hdr">○ Project Approval (${pending.length} pending, ${rejected.length} rejected)</div>
-      ${pending.map(i => `<div class="policy-server-row"><span class="approval-badge approval-pending">○ Pending</span><span class="policy-server-name">${esc(i.name)}</span></div>`).join("")}
-      ${rejected.map(i => `<div class="policy-server-row"><span class="approval-badge approval-rejected">✗ Rejected</span><span class="policy-server-name">${esc(i.name)}</span></div>`).join("")}
-    </div>`;
+  if (disabled.length === 0) {
+    html += `<div class="mcp-controls-empty">All servers enabled. Add a server below to disable it.</div>`;
+  } else {
+    html += disabled.map(name => `<div class="mcp-controls-row">
+      <span class="mcp-controls-name">${esc(name)}</span>
+      <button class="mcp-controls-remove-btn" data-name="${esc(name)}" title="Re-enable">✕</button>
+    </div>`).join("");
   }
 
-  // All servers with dropdown
-  html += `<div class="policy-section">
-    <div class="policy-section-hdr">All Servers (${serverMap.size})</div>
-    ${[...serverMap.entries()].map(([name, info]) => {
-      const status = statusMap[name] || "no-policy";
-      const icon = status === "allowed" ? "✅" : status === "denied" ? "❌" : "⚠️";
-      const scopes = [...info.scopes].join(", ");
-      return `<div class="policy-server-row">
-        <span>${icon}</span>
-        <span class="policy-server-name">${esc(name)}</span>
-        <span class="policy-server-scopes">${esc(scopes)}</span>
-        <select class="policy-action-select" data-server="${esc(name)}">
-          <option value="" ${status === "no-policy" ? "selected" : ""}>—</option>
-          <option value="allow" ${status === "allowed" ? "selected" : ""}>Allow</option>
-          <option value="deny" ${status === "denied" ? "selected" : ""}>Deny</option>
-        </select>
-      </div>`;
-    }).join("")}
+  // Search-to-add input
+  html += `<div class="mcp-controls-add">
+    <div class="mcp-controls-add-wrap">
+      <input type="text" class="mcp-controls-input" id="mcpDisableInput" placeholder="Search server to disable…" autocomplete="off">
+      <div class="mcp-controls-suggestions hidden" id="mcpSuggestions"></div>
+    </div>
   </div>`;
+
+  html += `</div>`;
+  html += `<div class="mcp-controls-note">Any server with a disabled name won't load in this project, regardless of scope (global or project). Same as <code>/mcp disable &lt;name&gt;</code> in Claude Code.</div>`;
 
   body.innerHTML = html;
 
-  // Bind remove buttons
-  body.querySelectorAll(".policy-remove-btn").forEach(btn => {
+  // Wire up remove buttons
+  body.querySelectorAll(".mcp-controls-remove-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const action = btn.dataset.action;
-      const rawEntry = JSON.parse(btn.dataset.entry);
-      const entry = {};
-      if (rawEntry.serverName) entry.serverName = rawEntry.serverName;
-      if (rawEntry.serverUrl) entry.serverUrl = rawEntry.serverUrl;
-      if (rawEntry.serverCommand) entry.serverCommand = rawEntry.serverCommand;
-      const result = await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, entry }) });
-      if (result.ok) { openMcpPolicyPanel(); toast("Policy updated"); }
-      else toast("Failed to update policy", true);
+      const result = await fetchJson("/api/mcp-disabled", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project: projectPath, action: "enable", serverName: btn.dataset.name }),
+      });
+      if (result.ok) { openMcpControlsPanel(); toast(`${btn.dataset.name} enabled`); }
+      else toast("Failed", true);
     });
   });
 
-  // Bind dropdown changes
-  body.querySelectorAll(".policy-action-select").forEach(sel => {
-    sel.addEventListener("change", async () => {
-      const name = sel.dataset.server;
-      const value = sel.value;
-      const currentStatus = statusMap[name] || "no-policy";
+  // Wire up fuzzy search input
+  const input = body.querySelector("#mcpDisableInput");
+  const sugBox = body.querySelector("#mcpSuggestions");
 
-      // Remove from current list first
-      if (currentStatus === "allowed") {
-        await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove-allow", entry: { serverName: name } }) });
-      } else if (currentStatus === "denied") {
-        await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove-deny", entry: { serverName: name } }) });
-      }
+  input.addEventListener("input", () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { sugBox.classList.add("hidden"); return; }
 
-      // Add to new list
-      if (value === "allow") {
-        await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add-allow", entry: { serverName: name } }) });
-      } else if (value === "deny") {
-        await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add-deny", entry: { serverName: name } }) });
-      }
+    const matches = availableToDisable.filter(n => n.toLowerCase().includes(q)).slice(0, 8);
+    if (matches.length === 0) {
+      sugBox.innerHTML = `<div class="mcp-sug-item mcp-sug-empty">No matches</div>`;
+    } else {
+      sugBox.innerHTML = matches.map(n =>
+        `<div class="mcp-sug-item" data-name="${esc(n)}">${esc(n)}</div>`
+      ).join("");
+    }
+    sugBox.classList.remove("hidden");
 
-      openMcpPolicyPanel();
-      toast(`${name}: ${value || "no policy"}`);
+    // Bind suggestion clicks
+    sugBox.querySelectorAll(".mcp-sug-item[data-name]").forEach(item => {
+      item.addEventListener("click", async () => {
+        const result = await fetchJson("/api/mcp-disabled", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project: projectPath, action: "disable", serverName: item.dataset.name }),
+        });
+        if (result.ok) { openMcpControlsPanel(); toast(`${item.dataset.name} disabled`); }
+        else toast("Failed", true);
+      });
     });
   });
+
+  input.addEventListener("focus", () => { if (input.value.trim()) input.dispatchEvent(new Event("input")); });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".mcp-controls-add")) sugBox.classList.add("hidden"); }, { once: true });
 }
 
-function closePolicyPanel() {
-  document.getElementById("policyPanel").classList.add("hidden");
+function closeMcpControlsPanel() {
+  document.getElementById("mcpControlsPanel").classList.add("hidden");
 }
 
-function setupPolicyPanel() {
-  const btn = document.getElementById("mcpPolicyBtn");
+function setupMcpControls() {
+  const btn = document.getElementById("mcpControlsBtn");
   if (!btn) return;
   btn.addEventListener("click", () => {
-    // Close other panels
     document.getElementById("ctxBudgetPanel")?.classList.add("hidden");
     document.getElementById("securityPanel")?.classList.add("hidden");
     closeDetail();
-    openMcpPolicyPanel();
+    openMcpControlsPanel();
   });
-  document.getElementById("policyClose")?.addEventListener("click", closePolicyPanel);
+  document.getElementById("mcpControlsClose")?.addEventListener("click", closeMcpControlsPanel);
 }
 
 function cssEscape(value) {

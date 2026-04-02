@@ -1212,6 +1212,37 @@ export async function scan() {
 }
 
 /**
+ * Read disabled MCP servers for a project from ~/.claude.json.
+ * Mirrors ccsrc: projects[absolutePath].disabledMcpServers
+ */
+export async function getDisabledMcpServers(projectPath) {
+  const claudeJsonPath = join(HOME, ".claude.json");
+  try {
+    const raw = await readFile(claudeJsonPath, "utf-8");
+    const config = JSON.parse(raw);
+    const projectConfig = config.projects?.[projectPath];
+    return Array.isArray(projectConfig?.disabledMcpServers) ? projectConfig.disabledMcpServers : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Set disabled MCP servers for a project in ~/.claude.json.
+ * Matches the behavior of `/mcp disable <name>` in Claude Code.
+ */
+export async function setDisabledMcpServers(projectPath, disabledList) {
+  const claudeJsonPath = join(HOME, ".claude.json");
+  let config = {};
+  try { config = JSON.parse(await readFile(claudeJsonPath, "utf-8")); } catch { /* new file */ }
+  if (!config.projects) config.projects = {};
+  if (!config.projects[projectPath]) config.projects[projectPath] = {};
+  config.projects[projectPath].disabledMcpServers = disabledList;
+  const { writeFile: wf } = await import("node:fs/promises");
+  await wf(claudeJsonPath, JSON.stringify(config, null, 2) + "\n");
+}
+
+/**
  * Scan MCP allowlist/denylist policy from settings files.
  * Returns structured policy data for the policy editor UI.
  */

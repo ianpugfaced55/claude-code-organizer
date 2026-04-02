@@ -22,10 +22,7 @@
         <button class="theme-btn" id="themeToggle" type="button">◐</button>
       </div>
 
-      <div class="sidebar-btn-row">
-        <button class="sidebar-security-btn sidebar-half-btn" id="securityScanBtn" type="button">🛡️ Scan</button>
-        <button class="sidebar-security-btn sidebar-half-btn sidebar-policy-btn" id="mcpPolicyBtn" type="button">📋 Policy</button>
-      </div>
+      <button class="sidebar-security-btn" id="securityScanBtn" type="button">🛡️ Security Scan</button>
       <input class="sidebar-search" id="searchInput" type="text" placeholder="Search...">
 
       <div class="sidebar-tree" id="sidebarTree"></div>
@@ -47,6 +44,7 @@
           <div class="content-inherit" id="contentInherit"></div>
           <button class="export-btn inherit-toggle-btn" id="inheritToggleBtn" type="button" title="Show items resolved by each category's official scope rules">✦ Show Effective</button>
           <button class="export-btn ctx-budget-btn" id="ctxBudgetBtn" type="button" title="Show context token budget for this scope">Context Budget</button>
+          <button class="export-btn ctx-budget-btn" id="mcpControlsBtn" type="button" title="Manage which MCP servers are disabled in this project">MCP Controls</button>
         </div>
         <div class="filter-bar" id="pills"></div>
         <div class="rule-bar hidden" id="ruleBar">
@@ -188,14 +186,13 @@
       </div>
     </div>
 
-    <div class="detail hidden" id="policyPanel">
+    <div class="detail hidden" id="mcpControlsPanel">
       <div class="detail-top">
-        <h2>📋 MCP Server Policy</h2>
-        <button class="detail-x" id="policyClose" type="button">✕</button>
+        <h2 id="mcpControlsTitle">MCP Controls</h2>
+        <button class="detail-x" id="mcpControlsClose" type="button">✕</button>
       </div>
-      <div class="policy-panel-note">Policy applies globally — deny/allow lists merge across all scopes. Deny always wins.</div>
-      <div class="policy-panel-body" id="policyBody">
-        <div class="ctx-budget-loading">Loading policy…</div>
+      <div class="mcp-controls-body" id="mcpControlsBody">
+        <div class="ctx-budget-loading">Loading…</div>
       </div>
     </div>
   </div>

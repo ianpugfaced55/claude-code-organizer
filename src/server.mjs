@@ -10,7 +10,7 @@ import { join, extname, resolve, dirname, sep, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import https from "node:https";
-import { scan, scanMcpPolicy, checkMcpPolicy } from "./scanner.mjs";
+import { scan, scanMcpPolicy, checkMcpPolicy, getDisabledMcpServers, setDisabledMcpServers } from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
 import { countTokens, getMethod } from "./tokenizer.mjs";
 import { introspectServers } from "./mcp-introspector.mjs";
@@ -794,6 +794,41 @@ async function handleRequest(req, res) {
       });
     } catch (err) {
       return json(res, { ok: false, error: `Export failed: ${err.message}` }, 400);
+    }
+  }
+
+  // ── MCP Controls API ───────────────────────────────────────────────
+
+  // GET /api/mcp-disabled?project=<absolutePath> — get disabled servers for a project
+  if (path === "/api/mcp-disabled" && req.method === "GET") {
+    const projectPath = url.searchParams.get("project");
+    if (!projectPath) return json(res, { ok: false, error: "Missing project param" }, 400);
+    const disabled = await getDisabledMcpServers(projectPath);
+    return json(res, { ok: true, disabled });
+  }
+
+  // POST /api/mcp-disabled — add or remove from disabled list
+  if (path === "/api/mcp-disabled" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { project, action, serverName } = body;
+      if (!project || !action || !serverName) return json(res, { ok: false, error: "Missing project, action, or serverName" }, 400);
+
+      const current = await getDisabledMcpServers(project);
+      let updated;
+      if (action === "disable") {
+        updated = current.includes(serverName) ? current : [...current, serverName];
+      } else if (action === "enable") {
+        updated = current.filter(n => n !== serverName);
+      } else {
+        return json(res, { ok: false, error: `Unknown action: ${action}` }, 400);
+      }
+
+      await setDisabledMcpServers(project, updated);
+      cachedData = null;
+      return json(res, { ok: true, disabled: updated });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
     }
   }
 
