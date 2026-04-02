@@ -1133,6 +1133,45 @@ async function scanSessions(scope) {
  *   counts: { memory: N, skill: N, mcp: N, config: N, hook: N, plugin: N, plan: N, session: N, total: N }
  * }
  */
+/**
+ * Detect enterprise MCP exclusive control mode.
+ * When managed-mcp.json exists, Claude Code ignores ALL user/project/plugin servers.
+ * Also checks managed settings for allowManagedMcpServersOnly policy.
+ */
+export async function detectEnterpriseMcp() {
+  const mcpPaths = [
+    join(MANAGED_DIR, "managed-mcp.json"),
+    join(HOME, ".claude", "managed", "managed-mcp.json"),
+  ];
+
+  for (const mcpPath of mcpPaths) {
+    const content = await safeReadFile(mcpPath);
+    if (content) {
+      try {
+        const config = JSON.parse(content);
+        const servers = config.mcpServers || {};
+        return { active: true, path: mcpPath, serverCount: Object.keys(servers).length, serverNames: Object.keys(servers) };
+      } catch {
+        return { active: true, path: mcpPath, serverCount: 0, serverNames: [] };
+      }
+    }
+  }
+
+  // Also check managed settings for allowManagedMcpServersOnly
+  const managedSettingsPath = join(MANAGED_DIR, "managed-settings.json");
+  const msContent = await safeReadFile(managedSettingsPath);
+  if (msContent) {
+    try {
+      const ms = JSON.parse(msContent);
+      if (ms.allowManagedMcpServersOnly === true) {
+        return { active: true, path: managedSettingsPath, serverCount: 0, serverNames: [], policyOnly: true };
+      }
+    } catch {}
+  }
+
+  return { active: false, path: null, serverCount: 0, serverNames: [] };
+}
+
 export async function scan() {
   _settingsCache = null; // reset cache each scan
   const scopes = await discoverScopes();
@@ -1166,7 +1205,10 @@ export async function scan() {
     counts[item.category] = (counts[item.category] || 0) + 1;
   }
 
-  return { scopes, items: allItems, counts };
+  // Detect enterprise MCP mode
+  const enterpriseMcp = await detectEnterpriseMcp();
+
+  return { scopes, items: allItems, counts, enterpriseMcp };
 }
 
 /**

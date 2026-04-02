@@ -867,6 +867,7 @@ function renderMainContent() {
           </span>`}
         </div>
         <div class="cat-body${collapsed ? " collapsed" : ""}">
+          ${category === "mcp" && data?.enterpriseMcp?.active ? `<div class="enterprise-banner">⚠️ Enterprise MCP Active — Only managed servers are loaded. User, project, and plugin servers are ignored.${data.enterpriseMcp.serverCount > 0 ? ` <strong>${data.enterpriseMcp.serverCount}</strong> managed server${data.enterpriseMcp.serverCount === 1 ? "" : "s"}.` : ""}</div>` : ""}
           ${category === "skill"
             ? renderSkillCategory(scope.id, config.group, catItems)
             : `
