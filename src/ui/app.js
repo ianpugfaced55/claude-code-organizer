@@ -33,6 +33,7 @@ let searchQuery = "";
 let selectMode = false;
 let toastTimer = null;
 let detailPreviewKey = null;
+let mcpDisabledNames = new Set(); // disabled MCP server names for current scope
 
 const uiState = {
   expandedScopes: new Set(),
@@ -288,7 +289,19 @@ function setupItemList() {
       const item = getItemByKey(itemEl?.dataset.itemKey);
       if (!item) return;
 
-      if (actionBtn.dataset.action === "move") {
+      if (actionBtn.dataset.action === "mcp-toggle") {
+        const mcpName = actionBtn.dataset.mcpName;
+        const scope = getScopeById(selectedScopeId);
+        if (!scope?.repoDir) return;
+        const isCurrentlyDisabled = mcpDisabledNames.has(mcpName);
+        if (isCurrentlyDisabled) {
+          // Enable — no confirmation needed
+          toggleMcpDisabled(scope.repoDir, mcpName, "enable");
+        } else {
+          // Disable — show confirmation
+          showMcpDisableConfirm(scope, mcpName);
+        }
+      } else if (actionBtn.dataset.action === "move") {
         openMoveModal(item);
       } else if (actionBtn.dataset.action === "open") {
         openInEditor(item.path);
@@ -562,7 +575,8 @@ function renderAll() {
   renderContentHeader();
   renderPills();
   renderRuleBar();
-  renderMainContent();
+  // Load disabled MCP list first, then render content
+  loadMcpDisabledList().then(() => { renderMainContent(); initSortable(); });
   updateBulkBar();
 
   const needsPreview = selectedItem && itemKey(selectedItem) !== detailPreviewKey;
@@ -815,6 +829,15 @@ function renderRuleBar() {
   };
 }
 
+async function loadMcpDisabledList() {
+  const scope = getScopeById(selectedScopeId);
+  if (!scope?.repoDir) { mcpDisabledNames = new Set(); return; }
+  try {
+    const res = await fetchJson(`/api/mcp-disabled?project=${encodeURIComponent(scope.repoDir)}`);
+    mcpDisabledNames = new Set(res.ok ? res.disabled : []);
+  } catch { mcpDisabledNames = new Set(); }
+}
+
 function renderMainContent() {
   const itemList = document.getElementById("itemList");
   const scope = getScopeById(selectedScopeId);
@@ -951,11 +974,16 @@ function renderItem(item) {
                        : isFromAncestor ? `<span class="scope-tag st-ancestor" data-tooltip="From a parent directory — Claude Code loads CLAUDE.md files by walking up from the working directory">Ancestor</span>`
                        : isFromGlobal   ? `<span class="scope-tag st-global" data-tooltip="Available globally from ~/.claude/ — applies to all projects on this machine">Global</span>`
                        : "";
-  const actions = (item.locked || isFromGlobal) ? "" : `
+  const isMcpDisabled = item.category === "mcp" && mcpDisabledNames.has(item.name);
+  const mcpToggleBtn = item.category === "mcp"
+    ? `<button type="button" class="act-btn ${isMcpDisabled ? "act-mcp-enable" : "act-mcp-disable"}" data-action="mcp-toggle" data-mcp-name="${esc(item.name)}" title="${isMcpDisabled ? "Re-enable in this project" : "Disable in this project"}">${isMcpDisabled ? "Enable" : "Disable"}</button>`
+    : "";
+  const actions = (item.locked || isFromGlobal) ? (mcpToggleBtn ? `<span class="item-actions">${mcpToggleBtn}</span>` : "") : `
     <span class="item-actions">
       ${(canMoveItem(item) || item.locked) ? `<button type="button" class="act-btn act-move" data-action="move">Move</button>` : ""}
       <button type="button" class="act-btn act-open" data-action="open">Open</button>
       ${canDeleteItem(item) ? `<button type="button" class="act-btn act-del" data-action="delete">Del</button>` : ""}
+      ${mcpToggleBtn}
     </span>`;
 
   const dragHandle = item.locked ? "" : `<span class="drag-handle" title="Drag to move">⠿</span>`;
@@ -975,13 +1003,14 @@ function renderItem(item) {
       : "";
 
   return `
-    <div class="item${item.locked ? " locked" : ""}${isSelected ? " selected" : ""}" data-item-key="${esc(key)}" data-path="${esc(item.path)}" data-category="${esc(item.category)}">
+    <div class="item${item.locked ? " locked" : ""}${isSelected ? " selected" : ""}${isMcpDisabled ? " mcp-disabled" : ""}" data-item-key="${esc(key)}" data-path="${esc(item.path)}" data-category="${esc(item.category)}">
       ${dragHandle}
       ${checkbox}
       <span class="item-ico">${icon}</span>
       ${effectiveBadge}
       <span class="item-name">${esc(item.name)}</span>
-      ${secBadgeHtml}${blFlagHtml}      ${badgeHtml}
+      ${secBadgeHtml}${blFlagHtml}${isMcpDisabled ? `<span class="mcp-disabled-badge" title="Disabled in this project — all servers named '${esc(item.name)}' won't load here">Disabled</span>` : ""}
+      ${badgeHtml}
       <span class="item-desc">${item.category === "mcp" ? "" : esc(desc)}</span>
       ${actions}
       ${item.category === "mcp" ? "" : item.category === "setting" ? `<div class="item-right">
@@ -2779,6 +2808,52 @@ function renderMarkdown(text) {
 
 // ── MCP Policy Panel ──────────────────────────────────────────────
 
+function toggleMcpDisabled(projectPath, serverName, action) {
+  fetchJson("/api/mcp-disabled", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: projectPath, action, serverName }),
+  }).then(res => {
+    if (res.ok) {
+      if (action === "disable") mcpDisabledNames.add(serverName);
+      else mcpDisabledNames.delete(serverName);
+      renderMainContent();
+      initSortable();
+      toast(`${serverName} ${action}d in this project`);
+      // Refresh panel if open
+      if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) openMcpControlsPanel();
+    }
+  });
+}
+
+function showMcpDisableConfirm(scope, mcpName) {
+  // Count how many items share this name
+  const allMcp = (data?.items || []).filter(i => i.category === "mcp" && i.name === mcpName);
+  const scopes = [...new Set(allMcp.map(i => i.scopeId === "global" ? "Global" : getScopeById(i.scopeId)?.name || i.scopeId))];
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-bg";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Disable "${esc(mcpName)}"?</h3>
+      <p class="modal-sub">All MCP servers named <strong>${esc(mcpName)}</strong> will be disabled in <strong>${esc(scope.name)}</strong>.</p>
+      ${scopes.length > 1 ? `<p class="modal-sub">This name appears in: <strong>${scopes.map(s => esc(s)).join(", ")}</strong> — all will be affected.</p>` : ""}
+      <p class="modal-sub" style="color:var(--text-faint)">Same as running <code>/mcp disable ${esc(mcpName)}</code> in Claude Code.</p>
+      <div class="modal-btns">
+        <button class="d-btn" id="mcpConfirmCancel">Cancel</button>
+        <button class="d-btn d-btn-del" id="mcpConfirmOk">Disable</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#mcpConfirmCancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector("#mcpConfirmOk").addEventListener("click", () => {
+    overlay.remove();
+    toggleMcpDisabled(scope.repoDir, mcpName, "disable");
+  });
+}
+
 async function openMcpControlsPanel() {
   const panel = document.getElementById("mcpControlsPanel");
   panel.classList.remove("hidden");
@@ -2825,17 +2900,10 @@ async function openMcpControlsPanel() {
     </div>`).join("");
   }
 
-  // Add controls: dropdown + search
+  // Searchable combobox — type to filter, click to add
   html += `<div class="mcp-controls-add">
-    <div class="mcp-controls-add-row">
-      <select class="mcp-controls-select" id="mcpDisableSelect">
-        <option value="">— Select server —</option>
-        ${availableToDisable.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}
-      </select>
-      <button class="mcp-controls-add-btn" id="mcpDisableAddBtn">+ Disable</button>
-    </div>
     <div class="mcp-controls-add-wrap">
-      <input type="text" class="mcp-controls-input" id="mcpDisableInput" placeholder="or search by name…" autocomplete="off">
+      <input type="text" class="mcp-controls-input" id="mcpDisableInput" placeholder="Type to search or browse servers…" autocomplete="off">
       <div class="mcp-controls-suggestions hidden" id="mcpSuggestions"></div>
     </div>
   </div>`;
@@ -2845,43 +2913,20 @@ async function openMcpControlsPanel() {
 
   body.innerHTML = html;
 
-  // Wire up dropdown + add button
-  const select = body.querySelector("#mcpDisableSelect");
-  const addBtn = body.querySelector("#mcpDisableAddBtn");
-  addBtn.addEventListener("click", async () => {
-    const name = select.value;
-    if (!name) return;
-    const result = await fetchJson("/api/mcp-disabled", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project: projectPath, action: "disable", serverName: name }),
-    });
-    if (result.ok) { openMcpControlsPanel(); toast(`${name} disabled`); }
-    else toast("Failed", true);
-  });
-
   // Wire up remove buttons
   body.querySelectorAll(".mcp-controls-remove-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const result = await fetchJson("/api/mcp-disabled", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project: projectPath, action: "enable", serverName: btn.dataset.name }),
-      });
-      if (result.ok) { openMcpControlsPanel(); toast(`${btn.dataset.name} enabled`); }
-      else toast("Failed", true);
-    });
+    btn.addEventListener("click", () => toggleMcpDisabled(projectPath, btn.dataset.name, "enable"));
   });
 
-  // Wire up fuzzy search input
+  // Searchable combobox: show all on focus, filter on type, click to disable
   const input = body.querySelector("#mcpDisableInput");
   const sugBox = body.querySelector("#mcpSuggestions");
 
-  input.addEventListener("input", () => {
-    const q = input.value.trim().toLowerCase();
-    if (!q) { sugBox.classList.add("hidden"); return; }
-
-    const matches = availableToDisable.filter(n => n.toLowerCase().includes(q)).slice(0, 8);
+  function renderSuggestions(query) {
+    const q = query.toLowerCase();
+    const matches = q ? availableToDisable.filter(n => n.toLowerCase().includes(q)) : availableToDisable;
     if (matches.length === 0) {
-      sugBox.innerHTML = `<div class="mcp-sug-item mcp-sug-empty">No matches</div>`;
+      sugBox.innerHTML = `<div class="mcp-sug-item mcp-sug-empty">${q ? "No matches" : "No servers available"}</div>`;
     } else {
       sugBox.innerHTML = matches.map(n =>
         `<div class="mcp-sug-item" data-name="${esc(n)}">${esc(n)}</div>`
@@ -2889,21 +2934,19 @@ async function openMcpControlsPanel() {
     }
     sugBox.classList.remove("hidden");
 
-    // Bind suggestion clicks
     sugBox.querySelectorAll(".mcp-sug-item[data-name]").forEach(item => {
-      item.addEventListener("click", async () => {
-        const result = await fetchJson("/api/mcp-disabled", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project: projectPath, action: "disable", serverName: item.dataset.name }),
-        });
-        if (result.ok) { openMcpControlsPanel(); toast(`${item.dataset.name} disabled`); }
-        else toast("Failed", true);
+      item.addEventListener("click", () => {
+        const scope = getScopeById(selectedScopeId);
+        if (scope) showMcpDisableConfirm(scope, item.dataset.name);
       });
     });
-  });
+  }
 
-  input.addEventListener("focus", () => { if (input.value.trim()) input.dispatchEvent(new Event("input")); });
-  document.addEventListener("click", (e) => { if (!e.target.closest(".mcp-controls-add")) sugBox.classList.add("hidden"); }, { once: true });
+  input.addEventListener("input", () => renderSuggestions(input.value.trim()));
+  input.addEventListener("focus", () => renderSuggestions(input.value.trim()));
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".mcp-controls-add")) sugBox.classList.add("hidden");
+  }, { once: true });
 }
 
 function closeMcpControlsPanel() {
