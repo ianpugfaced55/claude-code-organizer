@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "claude-code-organizer": {
-      "command": "npx",
-      "args": ["-y", "@mcpware/claude-code-organizer"]
-    }
-  }
-}
